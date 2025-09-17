@@ -45,7 +45,7 @@ Establish Conventional Commits (`feat:`, `fix:`, `chore:`) for clarity until a h
 
 ### 1. Planning & Staging
 
-Break complex work into 3-5 stages. Document in `IMPLEMENTATION_PLAN.md`:
+Break complex work into 3-5 stages.
 
 ```markdown
 ## Stage N: [Name]

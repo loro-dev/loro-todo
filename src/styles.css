@@ -627,10 +627,13 @@ body {
     min-width: 0; /* allow shrinking in flex */
     flex: 1 1 auto; /* take remaining space, wrap as needed */
     background: transparent;
+    background-color: transparent;
     border: 1px solid transparent;
     color: var(--text);
     caret-color: var(--text);
     -webkit-touch-callout: default;
+    -webkit-appearance: none;
+    appearance: none;
     font-family: inherit; /* match app font family */
     font-size: 15px;
     line-height: 1.35;
@@ -648,6 +651,7 @@ body {
 
 .todo-text:focus {
     outline: none;
+    background-color: transparent;
 }
 
 .todo-item.done .todo-text {
