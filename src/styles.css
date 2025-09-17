@@ -111,7 +111,7 @@ body {
 .app {
     max-width: 678px;
     margin: 0 auto;
-    padding: 48px 24px 0px 36px;
+    padding: 48px 24px 48px 36px;
     position: relative;
     z-index: 1;
 }
@@ -218,6 +218,11 @@ body {
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+.btn:focus,
+.btn:focus-visible {
+    outline: none;
+    box-shadow: none;
 }
 
 .btn-primary {
@@ -779,12 +784,201 @@ body {
     justify-content: flex-end;
 }
 
+/* Help panel */
+.help-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(24, 18, 12, 0.45);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    z-index: 40;
+    overflow-y: auto;
+}
+
+.help-card {
+    margin: 0;
+    padding: 26px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.help-dialog {
+    width: min(520px, 100%);
+    max-height: min(560px, 100%);
+    overflow-y: auto;
+    box-shadow:
+        0 24px 48px rgba(0, 0, 0, 0.2),
+        0 8px 18px rgba(0, 0, 0, 0.18);
+    position: relative;
+    border-radius: 16px;
+}
+
+.help-title {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text);
+}
+
+.help-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+.help-close {
+    border: 1px solid color-mix(in oklab, var(--btn-border) 65%, var(--card));
+    background: color-mix(in oklab, var(--card) 85%, #ffffff 15%);
+    color: var(--muted);
+    padding: 4px 12px;
+    font-size: 0.85rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition:
+        background 140ms ease,
+        color 140ms ease,
+        border-color 140ms ease;
+}
+
+.help-close:hover,
+.help-close:focus-visible {
+    color: var(--text);
+    border-color: color-mix(
+        in oklab,
+        var(--ring-strong) 50%,
+        var(--btn-border)
+    );
+}
+
+.help-close:focus-visible {
+    outline: none;
+}
+
+.help-inline-link {
+    color: var(--text);
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 1px solid
+        color-mix(in oklab, var(--btn-border) 60%, var(--card));
+}
+
+.help-inline-link:hover {
+    text-decoration: none;
+    border-color: color-mix(
+        in oklab,
+        var(--ring-strong) 40%,
+        var(--btn-border)
+    );
+}
+
+.help-lead {
+    margin: 0;
+    color: var(--text);
+    font-size: 0.95rem;
+}
+
+.help-paragraph {
+    margin: 8px 0 0;
+    color: var(--text);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+.help-github-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: none;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transform: translateY(3px);
+}
+
+.help-github-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.help-github-link:hover {
+    text-decoration: underline;
+}
+
+.help-quick-cards {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+.help-quick-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--card) 92%, #ffffff 8%);
+    border: 1px solid color-mix(in oklab, var(--btn-border) 45%, var(--card));
+}
+
+.help-quick-card h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--text);
+}
+
+.help-quick-card p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.help-card-icon {
+    font-size: 22px;
+    color: color-mix(in oklab, var(--text) 70%, var(--muted));
+}
+
+.help-note {
+    margin: 2px 0 0;
+    color: var(--muted);
+    font-size: 0.88rem;
+}
+
+.help-dialog:focus {
+    outline: none;
+}
+
+@media (max-width: 640px) {
+    .help-backdrop {
+        padding: 20px;
+    }
+
+    .help-card {
+        padding: 22px 20px;
+        gap: 12px;
+        border-radius: 14px;
+    }
+}
+
+@media (min-width: 960px) {
+    .help-dialog {
+        width: min(720px, 100%);
+    }
+
+    .help-quick-cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
 /* Footer */
 .app-footer {
     background: color-mix(in srgb, var(--bg) 50%, transparent);
     padding: 12px 0px 16px;
-    border-top: 1px solid
-        color-mix(in oklab, var(--btn-border) 60%, var(--card));
+    border-top: 1px solid color-mix(in oklab, var(--btn-border) 60%, var(--card));
     color: var(--muted);
     font-size: 12px;
     display: flex;
@@ -796,13 +990,16 @@ body {
     margin-left: calc(50% - 50vw);
     box-sizing: border-box;
 }
+
 .app-footer a {
     color: var(--muted);
     text-decoration: none;
 }
+
 .app-footer a:hover {
     text-decoration: underline;
 }
+
 .app-footer .footer-gh {
     display: inline-flex;
     align-items: center;
@@ -811,6 +1008,7 @@ body {
     padding: 2px 6px;
     border-radius: 6px;
 }
+
 .app-footer .footer-gh:hover {
     background: color-mix(in oklab, var(--bg) 94%, var(--brand) 6%);
 }
@@ -821,7 +1019,7 @@ body {
     left: 50%;
     bottom: 32px;
     transform: translateX(-50%);
-    z-index: 20; /* above footer (z:10) */
+    z-index: 20; /* keep above floating UI */
     background: var(--card);
     color: var(--text);
     border: 1px solid color-mix(in oklab, var(--btn-border) 60%, var(--card));
