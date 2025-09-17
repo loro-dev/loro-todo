@@ -1454,9 +1454,10 @@ function WorkspaceSession({
               </button>
             </header>
             <p className="help-lead">
-              Local-first and account-free—your edits live in this browser and
-              mirror through Loro&apos;s relay for seven days so collaborators
-              stay current.
+              This example to-do app is powered by Loro. It stays local-first
+              and account-free, keeping your edits in this browser while
+              mirroring them through Loro&apos;s relay for seven days so everyone
+              stays in sync.
             </p>
             <div className="help-quick-cards">
               <article className="help-quick-card">
