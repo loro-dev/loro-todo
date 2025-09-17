@@ -1,4 +1,42 @@
+import { FALLBACK_WORKSPACE_KEYS } from "./constants";
+
 export const AUTH_SALT = "loro-public-sync-server";
+
+function getSubtleCrypto(): SubtleCrypto | null {
+    if (typeof globalThis === "undefined") return null;
+    const maybeCrypto = (globalThis as typeof globalThis & { crypto?: Crypto }).crypto;
+    if (!maybeCrypto) return null;
+    return typeof maybeCrypto.subtle === "object" && maybeCrypto.subtle
+        ? maybeCrypto.subtle
+        : null;
+}
+
+function buildShareUrl(publicHex: string, privateHex: string): string {
+    if (typeof window === "undefined") {
+        return `/${publicHex}#${privateHex}`;
+    }
+    const origin = window.location.origin || "";
+    return origin
+        ? `${origin}/${publicHex}#${privateHex}`
+        : `/${publicHex}#${privateHex}`;
+}
+
+export function hasSubtleCrypto(): boolean {
+    return getSubtleCrypto() !== null;
+}
+
+export function getFallbackWorkspaceKeys(): {
+    publicHex: string;
+    privateHex: string;
+    share: string;
+} {
+    const { publicHex, privateHex } = FALLBACK_WORKSPACE_KEYS;
+    return {
+        publicHex,
+        privateHex,
+        share: buildShareUrl(publicHex, privateHex),
+    };
+}
 
 export function bytesToHex(arr: Uint8Array): string {
     let hex = "";
@@ -43,18 +81,22 @@ export function base64UrlToBytes(value: string): Uint8Array {
 }
 
 export async function exportRawPublicKeyHex(pubKey: CryptoKey): Promise<string> {
-    const raw = new Uint8Array(await crypto.subtle.exportKey("raw", pubKey));
+    const subtle = getSubtleCrypto();
+    if (!subtle) {
+        throw new Error("SubtleCrypto is not available");
+    }
+    const raw = new Uint8Array(await subtle.exportKey("raw", pubKey));
     return bytesToHex(raw);
 }
 
 export async function signSaltTokenHex(privateKey: CryptoKey): Promise<string> {
+    const subtle = getSubtleCrypto();
+    if (!subtle) {
+        throw new Error("SubtleCrypto is not available");
+    }
     const message = new TextEncoder().encode(AUTH_SALT);
     const signature = new Uint8Array(
-        await crypto.subtle.sign(
-            { name: "ECDSA", hash: "SHA-256" },
-            privateKey,
-            message,
-        ),
+        await subtle.sign({ name: "ECDSA", hash: "SHA-256" }, privateKey, message),
     );
     return bytesToHex(signature);
 }
@@ -68,6 +110,10 @@ export async function importKeyPairFromHex(
     privateHex: string,
 ): Promise<{ privateKey: CryptoKey; publicKey: CryptoKey } | null> {
     try {
+        const subtle = getSubtleCrypto();
+        if (!subtle) {
+            return null;
+        }
         if (publicHex.length !== 130 || !publicHex.startsWith("04")) {
             return null;
         }
@@ -93,14 +139,14 @@ export async function importKeyPairFromHex(
             ext: true,
         };
 
-        const publicKey = await crypto.subtle.importKey(
+        const publicKey = await subtle.importKey(
             "jwk",
             jwkPublic,
             { name: "ECDSA", namedCurve: "P-256" },
             true,
             ["verify"],
         );
-        const privateKey = await crypto.subtle.importKey(
+        const privateKey = await subtle.importKey(
             "jwk",
             jwkPrivate,
             { name: "ECDSA", namedCurve: "P-256" },
@@ -109,12 +155,12 @@ export async function importKeyPairFromHex(
         );
 
         const message = new TextEncoder().encode(AUTH_SALT);
-        const signature = await crypto.subtle.sign(
+        const signature = await subtle.sign(
             { name: "ECDSA", hash: "SHA-256" },
             privateKey,
             message,
         );
-        const verified = await crypto.subtle.verify(
+        const verified = await subtle.verify(
             { name: "ECDSA", hash: "SHA-256" },
             publicKey,
             signature,
@@ -128,25 +174,34 @@ export async function importKeyPairFromHex(
 }
 
 export async function generatePairAndUrl(): Promise<{
-    privateKey: CryptoKey;
-    publicKey: CryptoKey;
+    privateKey: CryptoKey | null;
+    publicKey: CryptoKey | null;
     publicHex: string;
     privateHex: string;
     share: string;
 }> {
-    const keyPair = await crypto.subtle.generateKey(
+    const subtle = getSubtleCrypto();
+    if (!subtle) {
+        const fallback = getFallbackWorkspaceKeys();
+        return {
+            privateKey: null,
+            publicKey: null,
+            publicHex: fallback.publicHex,
+            privateHex: fallback.privateHex,
+            share: fallback.share,
+        };
+    }
+
+    const keyPair = await subtle.generateKey(
         { name: "ECDSA", namedCurve: "P-256" },
         true,
         ["sign", "verify"],
     );
     const publicHex = await exportRawPublicKeyHex(keyPair.publicKey);
-    const jwkPrivate = await crypto.subtle.exportKey(
-        "jwk",
-        keyPair.privateKey,
-    );
+    const jwkPrivate = await subtle.exportKey("jwk", keyPair.privateKey);
     const dBytes = base64UrlToBytes(jwkPrivate.d ?? "");
     const privateHex = bytesToHex(dBytes);
-    const share = `${window.location.origin}/${publicHex}#${privateHex}`;
+    const share = buildShareUrl(publicHex, privateHex);
     return {
         privateKey: keyPair.privateKey,
         publicKey: keyPair.publicKey,

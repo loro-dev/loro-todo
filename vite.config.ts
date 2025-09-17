@@ -3,8 +3,7 @@ import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
 
-// https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
     plugins: [react(), wasm(), topLevelAwait()],
     build: {
         target: "es2019",
@@ -16,6 +15,6 @@ export default defineConfig({
         minifySyntax: true,
         minifyWhitespace: true,
         legalComments: "none",
-        drop: ["console", "debugger"],
+        drop: command === "build" ? ["console", "debugger"] : undefined,
     },
-});
+}));

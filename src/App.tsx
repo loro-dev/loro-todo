@@ -281,9 +281,10 @@ export function StreamlinePlumpRecycleBin2Remix(
 
 type WorkspaceSessionProps = {
     workspace: WorkspaceKeys;
+    fallbackActive: boolean;
 };
 
-function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
+function WorkspaceSession({ workspace, fallbackActive }: WorkspaceSessionProps) {
     const doc = useMemo(() => createConfiguredDoc(), []);
     (window as unknown as { doc?: unknown }).doc = doc;
     const undo = useMemo(() => createUndoManager(doc), [doc]);
@@ -1156,6 +1157,16 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
                     latencyMs={latencyMs}
                     onRequestToast={handleStatusToast}
                 />
+                {fallbackActive && (
+                    <div
+                        className="fallback-banner"
+                        role="alert"
+                        aria-live="assertive"
+                    >
+                        Sync is offline because Web Crypto isn't available. Serve the app
+                        over HTTPS or localhost to re-enable public sync.
+                    </div>
+                )}
                 {/* Room ID inline display removed; shown via selector options */}
             </header>
 
@@ -1435,6 +1446,7 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
 
 export function App() {
     const [workspace, setWorkspace] = useState<WorkspaceKeys | null>(null);
+    const [fallbackActive, setFallbackActive] = useState<boolean>(false);
     const ensureCounterRef = useRef(0);
     const workspaceRef = useRef<WorkspaceKeys | null>(null);
     const currentKeyRef = useRef<string | null>(null);
@@ -1466,6 +1478,10 @@ export function App() {
 
         ensureCounterRef.current += 1;
         const ensureId = ensureCounterRef.current;
+        const applyFallbackFlag = (value: boolean) => {
+            if (ensureCounterRef.current !== ensureId) return;
+            setFallbackActive(value);
+        };
         setWorkspace(null);
 
         const commit = (value: WorkspaceKeys | null) => {
@@ -1498,6 +1514,21 @@ export function App() {
             commit(value);
         };
 
+        const cryptoModule = await loadCryptoModule();
+        if (!cryptoModule.hasSubtleCrypto()) {
+            // TODO: REVIEW [Fallback to static workspace keys when WebCrypto is unavailable]
+            console.warn(
+                "Web Crypto Subtle API unavailable; using fallback workspace keys. Public sync stays offline until served over HTTPS or localhost.",
+            );
+            const fallback = cryptoModule.getFallbackWorkspaceKeys();
+            applyFallbackFlag(true);
+            useResolvedWorkspace({
+                publicHex: fallback.publicHex,
+                privateHex: fallback.privateHex,
+            });
+            return;
+        }
+
         try {
             if (
                 candidatePub &&
@@ -1505,7 +1536,6 @@ export function App() {
                 hexPattern.test(candidatePub) &&
                 hexPattern.test(candidatePriv)
             ) {
-                const cryptoModule = await loadCryptoModule();
                 const imported = await cryptoModule.importKeyPairFromHex(
                     candidatePub,
                     candidatePriv,
@@ -1521,6 +1551,7 @@ export function App() {
                     const privateHex = cryptoModule.bytesToHex(
                         cryptoModule.base64UrlToBytes(jwk.d ?? ""),
                     );
+                    applyFallbackFlag(false);
                     useResolvedWorkspace({ publicHex, privateHex });
                     return;
                 }
@@ -1534,6 +1565,7 @@ export function App() {
             const all = await listAllWorkspaces();
             if (all.length > 0) {
                 const latest = all[0];
+                applyFallbackFlag(false);
                 useResolvedWorkspace({
                     publicHex: latest.id.toLowerCase(),
                     privateHex: latest.privateHex.toLowerCase(),
@@ -1546,8 +1578,8 @@ export function App() {
         }
 
         try {
-            const cryptoModule = await loadCryptoModule();
             const generated = await cryptoModule.generatePairAndUrl();
+            applyFallbackFlag(false);
             useResolvedWorkspace({
                 publicHex: generated.publicHex,
                 privateHex: generated.privateHex,
@@ -1576,7 +1608,13 @@ export function App() {
     if (!workspace) return null;
 
     const key = `${workspace.publicHex}#${workspace.privateHex}`;
-    return <WorkspaceSession key={key} workspace={workspace} />;
+    return (
+        <WorkspaceSession
+            key={key}
+            workspace={workspace}
+            fallbackActive={fallbackActive}
+        />
+    );
 }
 
 type Todo = { $cid: string; text: string; status: TodoStatus };

@@ -37,6 +37,47 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
         const elementRef = React.useRef<HTMLDivElement | null>(null);
         const selectionRef = React.useRef<SelectionRange | null>(null);
         const isComposingRef = React.useRef(false);
+        const [isCoarsePointer, setIsCoarsePointer] = React.useState<boolean>(() => {
+            if (typeof window === "undefined") return false;
+            if (window.matchMedia) {
+                try {
+                    return window.matchMedia("(pointer: coarse)").matches;
+                } catch {}
+            }
+            return navigator.maxTouchPoints > 0;
+        });
+
+        React.useEffect(() => {
+            if (typeof window === "undefined" || !window.matchMedia) return;
+            let subscribed = true;
+            const mq = window.matchMedia("(pointer: coarse)");
+            const handler = (event: MediaQueryListEvent) => {
+                if (!subscribed) return;
+                setIsCoarsePointer(event.matches);
+            };
+            if (typeof mq.addEventListener === "function") {
+                mq.addEventListener("change", handler);
+                return () => {
+                    subscribed = false;
+                    mq.removeEventListener("change", handler);
+                };
+            }
+            if (typeof mq.addListener === "function") {
+                mq.addListener(handler);
+                return () => {
+                    subscribed = false;
+                    mq.removeListener(handler);
+                };
+            }
+        }, []);
+
+        const allowEditing = React.useMemo(() => {
+            if (detached) return false;
+            if (!isCoarsePointer) return true;
+            return textSelected;
+        }, [detached, isCoarsePointer, textSelected]);
+
+        const pendingSelectionRef = React.useRef<number | null>(null);
 
         const getSelectionOffsets = React.useCallback((): SelectionRange | null => {
             const el = elementRef.current;
@@ -124,7 +165,7 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
 
         const handleInput: React.FormEventHandler<HTMLDivElement> = React.useCallback(
             (event) => {
-                if (detached) {
+                if (!allowEditing) {
                     const el = event.currentTarget;
                     el.textContent = value;
                     return;
@@ -142,12 +183,19 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                 }
                 handleSanitizedChange(sanitized, !isComposingRef.current);
             },
-            [applySelectionOffsets, detached, getSelectionOffsets, handleSanitizedChange, sanitize, value],
+            [
+                allowEditing,
+                applySelectionOffsets,
+                getSelectionOffsets,
+                handleSanitizedChange,
+                sanitize,
+                value,
+            ],
         );
 
         const handlePaste: React.ClipboardEventHandler<HTMLDivElement> = React.useCallback(
             (event) => {
-                if (detached) return;
+                if (!allowEditing) return;
                 event.preventDefault();
                 const el = elementRef.current;
                 if (!el) return;
@@ -163,11 +211,19 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                 applySelectionOffsets(caret, caret);
                 handleSanitizedChange(singleLine, true);
             },
-            [applySelectionOffsets, detached, getSelectionOffsets, handleSanitizedChange, sanitize, value],
+            [
+                allowEditing,
+                applySelectionOffsets,
+                getSelectionOffsets,
+                handleSanitizedChange,
+                sanitize,
+                value,
+            ],
         );
 
         const handleCompositionEnd: React.CompositionEventHandler<HTMLDivElement> = React.useCallback(
             (event) => {
+                if (!allowEditing) return;
                 isComposingRef.current = false;
                 const sanitized = sanitize(event.currentTarget.textContent ?? "");
                 if ((event.currentTarget.textContent ?? "") !== sanitized) {
@@ -179,27 +235,52 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                 applySelectionOffsets(offsets.start, offsets.end);
                 handleSanitizedChange(sanitized, true);
             },
-            [applySelectionOffsets, getSelectionOffsets, handleSanitizedChange, sanitize],
+            [allowEditing, applySelectionOffsets, getSelectionOffsets, handleSanitizedChange, sanitize],
         );
 
         return (
             <div
                 ref={mergeRefs(elementRef, forwardedRef)}
                 className="todo-text"
-                contentEditable={!detached}
+                contentEditable={allowEditing}
                 suppressContentEditableWarning
                 role="textbox"
                 aria-multiline="false"
-                aria-readonly={detached}
+                aria-readonly={!allowEditing}
                 spellCheck={false}
                 onPointerDown={(event) => {
-                    if (textSelected || detached) return;
+                    if (allowEditing) return;
                     if (event.pointerType === "touch" || event.pointerType === "pen") {
                         if (event.cancelable) event.preventDefault();
                         elementRef.current?.blur();
+                        pendingSelectionRef.current = event.pointerId;
+                        return;
+                    }
+                    pendingSelectionRef.current = null;
+                }}
+                onPointerUp={(event) => {
+                    if (!allowEditing) {
+                        if (pendingSelectionRef.current === event.pointerId) {
+                            pendingSelectionRef.current = null;
+                            if (event.pointerType === "touch" && event.cancelable) {
+                                event.preventDefault();
+                            }
+                            onSelect?.();
+                        }
+                        return;
+                    }
+                    captureSelection();
+                }}
+                onPointerCancel={(event) => {
+                    if (pendingSelectionRef.current === event.pointerId) {
+                        pendingSelectionRef.current = null;
                     }
                 }}
                 onFocus={() => {
+                    if (!allowEditing) {
+                        elementRef.current?.blur();
+                        return;
+                    }
                     onSelect?.();
                     captureSelection();
                 }}
@@ -219,14 +300,16 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                 onCompositionEnd={handleCompositionEnd}
                 onPaste={handlePaste}
                 onBeforeInput={(event) => {
+                    if (!allowEditing) {
+                        event.preventDefault();
+                        return;
+                    }
                     const inputType = (event.nativeEvent as InputEvent | undefined)?.inputType;
                     if (inputType === "insertParagraph" || inputType === "insertLineBreak") {
                         event.preventDefault();
                     }
                 }}
                 onKeyUp={captureSelection}
-                onMouseUp={captureSelection}
-                onTouchEnd={captureSelection}
                 onDrop={(event) => {
                     event.preventDefault();
                 }}

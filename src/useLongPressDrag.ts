@@ -285,6 +285,20 @@ export function useLongPressDrag({
     );
 
     useEffect(() => {
+        if (typeof document === "undefined") return;
+        if (!manualDrag) return;
+        const prevBodyTouchAction = document.body.style.touchAction;
+        const prevRootTouchAction =
+            document.documentElement.style.touchAction;
+        document.body.style.touchAction = "none";
+        document.documentElement.style.touchAction = "none";
+        return () => {
+            document.body.style.touchAction = prevBodyTouchAction;
+            document.documentElement.style.touchAction = prevRootTouchAction;
+        };
+    }, [manualDrag]);
+
+    useEffect(() => {
         if (!manualDrag) return;
         const pointerId = manualDrag.pointerId;
         const onMove = (e: PointerEvent) => {
@@ -297,6 +311,7 @@ export function useLongPressDrag({
                     return { ...prev, clientY };
                 });
                 onUpdateInsertIndex(clientY);
+                if (e.cancelable) e.preventDefault();
             }
         };
         const onUp = (e: PointerEvent) => {
