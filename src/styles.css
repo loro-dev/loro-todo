@@ -493,17 +493,18 @@ body {
     list-style: none;
     padding: 0;
     margin: 0;
-    position: relative; /* container for absolutely positioned items */
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .todo-item {
-    position: absolute; /* positioned via transform translateY */
+    position: relative;
     display: flex; /* children vertically center, even with multi-line */
     gap: 8px;
     align-items: center;
     padding: 6px 12px 6px 12px;
     transition: transform 240ms ease;
-    will-change: transform;
 }
 
 .todo-item.selected {
@@ -531,22 +532,6 @@ body {
 }
 
 /* Insertion preview line */
-.todo-item.insert-top::before,
-.todo-item.insert-bottom::after {
-    content: "";
-    position: absolute;
-    left: 8px;
-    right: 8px;
-    height: 2px;
-    background: color-mix(in oklab, var(--brand) 60%, #ffffff);
-}
-.todo-item.insert-top::before {
-    top: -2px;
-}
-.todo-item.insert-bottom::after {
-    bottom: -2px;
-}
-
 .drag-handle {
     position: absolute;
     left: -34px; /* keep ~6px gap with larger size */
@@ -978,7 +963,8 @@ body {
 .app-footer {
     background: color-mix(in srgb, var(--bg) 50%, transparent);
     padding: 12px 0px 16px;
-    border-top: 1px solid color-mix(in oklab, var(--btn-border) 60%, var(--card));
+    border-top: 1px solid
+        color-mix(in oklab, var(--btn-border) 60%, var(--card));
     color: var(--muted);
     font-size: 12px;
     display: flex;
@@ -1084,7 +1070,7 @@ body {
     }
 
     .app {
-        padding: 28px 16px 0px 16px;
+        padding: 28px 16px 48px 16px;
     }
 
     .drag-handle {
