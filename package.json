@@ -8,7 +8,6 @@
     "predev": "pnpm -r --filter loro-mirror --filter loro-mirror-react build",
     "dev": "vite --force",
     "app:build": "vite build",
-    "postapp:build": "node scripts/compress-wasm.mjs",
     "preview": "vite preview --strictPort --port 5173",
     "typecheck": "tsc --noEmit"
   },
