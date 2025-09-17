@@ -1,5 +1,6 @@
 {
   "name": "loro-todo",
+  "main": "_worker.js",
   "compatibility_date": "2025-09-17",
   "assets": {
     "directory": "./dist",
