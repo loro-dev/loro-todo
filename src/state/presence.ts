@@ -54,7 +54,7 @@ export async function createPresenceSession(
                     ([key, value]) =>
                         key.startsWith("p:") &&
                         typeof value === "number" &&
-                        now - (value as number) < FRESH_WINDOW_MS,
+                        now - value < FRESH_WINDOW_MS,
                 )
                 .map(([key]) => key.slice(2))
                 .sort();
@@ -74,7 +74,7 @@ export async function createPresenceSession(
                 unsubscribe();
             } catch {}
             try {
-                store.delete(myKey as keyof Record<string, number>);
+                store.delete(myKey);
             } catch {}
             try {
                 store.destroy();

@@ -1,4 +1,4 @@
-export const AUTH_SALT = "loro-public-sync-server" as const;
+export const AUTH_SALT = "loro-public-sync-server";
 
 export function bytesToHex(arr: Uint8Array): string {
     let hex = "";
@@ -134,16 +134,16 @@ export async function generatePairAndUrl(): Promise<{
     privateHex: string;
     share: string;
 }> {
-    const keyPair = (await crypto.subtle.generateKey(
+    const keyPair = await crypto.subtle.generateKey(
         { name: "ECDSA", namedCurve: "P-256" },
         true,
         ["sign", "verify"],
-    )) as CryptoKeyPair;
+    );
     const publicHex = await exportRawPublicKeyHex(keyPair.publicKey);
-    const jwkPrivate = (await crypto.subtle.exportKey(
+    const jwkPrivate = await crypto.subtle.exportKey(
         "jwk",
         keyPair.privateKey,
-    )) as JsonWebKey;
+    );
     const dBytes = base64UrlToBytes(jwkPrivate.d ?? "");
     const privateHex = bytesToHex(dBytes);
     const share = `${window.location.origin}/${publicHex}#${privateHex}`;

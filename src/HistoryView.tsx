@@ -1,5 +1,5 @@
 import React from "react";
-import type { LoroDoc, Change, VersionVector } from "loro-crdt";
+import type { LoroDoc, PeerID } from "loro-crdt";
 
 type Props = {
     doc: LoroDoc;
@@ -25,8 +25,10 @@ export function HistoryView({ doc }: Props) {
         const changes = doc.getAllChanges();
         const set = new Set<number>();
         for (const [, arr] of changes.entries()) {
-            for (const c of arr as Change[]) {
-                if (c.timestamp && c.timestamp > 0) set.add(c.timestamp);
+            for (const change of arr) {
+                if (change.timestamp && change.timestamp > 0) {
+                    set.add(change.timestamp);
+                }
             }
         }
         const list = Array.from(set.values()).sort((a, b) => a - b);
@@ -36,15 +38,18 @@ export function HistoryView({ doc }: Props) {
     const getFrontiersForTimestamp = React.useCallback(
         (ts: number) => {
             const changes = doc.getAllChanges();
-            const frontiers: { peer: `${number}`, counter: number }[] = [];
+            const frontiers: { peer: PeerID; counter: number }[] = [];
             for (const [peer, arr] of changes.entries()) {
                 let counter = -1;
-                for (const c of arr as Change[]) {
-                    if (!c.timestamp || c.timestamp <= ts) {
-                        counter = Math.max(counter, c.counter + c.length - 1);
+                for (const change of arr) {
+                    if (!change.timestamp || change.timestamp <= ts) {
+                        counter = Math.max(
+                            counter,
+                            change.counter + change.length - 1,
+                        );
                     }
                 }
-                if (counter > -1) frontiers.push({ peer: peer as `${number}`, counter });
+                if (counter > -1) frontiers.push({ peer, counter });
             }
             return frontiers;
         },

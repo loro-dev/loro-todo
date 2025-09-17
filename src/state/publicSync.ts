@@ -64,10 +64,10 @@ export async function setupPublicSync(
         const privateKey = imported.privateKey;
         const publicKey = imported.publicKey;
         const publicHex = await exportRawPublicKeyHex(publicKey);
-        const jwkPriv = (await crypto.subtle.exportKey(
+        const jwkPriv = await crypto.subtle.exportKey(
             "jwk",
             privateKey,
-        )) as JsonWebKey;
+        );
         const dBytes = base64UrlToBytes(jwkPriv.d ?? "");
         const privateHex = bytesToHex(dBytes);
         const share = `${window.location.origin}/${publicHex}#${privateHex}`;

@@ -1,2 +1,2 @@
-export const SYNC_BASE = "wss://sync.loro.dev" as const;
-export const ROOM_ID = "react-todo-list" as const;
+export const SYNC_BASE = "wss://sync.loro.dev";
+export const ROOM_ID = "react-todo-list";

@@ -15,7 +15,16 @@ import {
     todoSchema,
     type TodoStatus,
 } from "./state/doc";
-import type { WorkspaceRecord } from "./state/storage";
+import {
+    deleteWorkspaceAndList,
+    fetchWorkspaceById,
+    listAllWorkspaces,
+    saveWorkspaceSnapshot,
+    setupWorkspacePersistence,
+    snapshotToArrayBuffer,
+    updateWorkspaceName,
+    type WorkspaceRecord,
+} from "./state/storage";
 import type { ClientStatusValue } from "loro-websocket";
 import type { WorkspaceConnectionKeys } from "./state/publicSync";
 import { useLongPressDrag } from "./useLongPressDrag";
@@ -24,21 +33,13 @@ import {
     createPresenceScheduler,
     type IdleWindow,
 } from "./state/presence";
+import { TodoTextInput } from "./TodoTextInput";
 
 const HistoryView = React.lazy(() => import("./HistoryView"));
 
-type StorageModule = typeof import("./state/storage");
 type PublicSyncModule = typeof import("./state/publicSync");
 type CryptoModule = typeof import("./state/crypto");
 type WorkspaceKeys = WorkspaceConnectionKeys;
-
-let storageModulePromise: Promise<StorageModule> | null = null;
-function loadStorageModule(): Promise<StorageModule> {
-    if (!storageModulePromise) {
-        storageModulePromise = import("./state/storage");
-    }
-    return storageModulePromise;
-}
 
 let publicSyncModulePromise: Promise<PublicSyncModule> | null = null;
 function loadPublicSyncModule(): Promise<PublicSyncModule> {
@@ -56,15 +57,9 @@ function loadCryptoModule(): Promise<CryptoModule> {
     return cryptoModulePromise;
 }
 async function switchToWorkspace(id: string): Promise<void> {
-    const { openDocDb, getWorkspace } = await loadStorageModule();
-    const db = await openDocDb();
-    try {
-        const record = await getWorkspace(db, id);
-        if (!record) return;
-        window.location.assign(`/${record.id}#${record.privateHex}`);
-    } finally {
-        db.close();
-    }
+    const record = await fetchWorkspaceById(id);
+    if (!record) return;
+    window.location.assign(`/${record.id}#${record.privateHex}`);
 }
 
 async function createNewWorkspace(): Promise<void> {
@@ -73,16 +68,21 @@ async function createNewWorkspace(): Promise<void> {
     window.location.assign(`/${generated.publicHex}#${generated.privateHex}`);
 }
 
+function normalizeHex(value: string): string {
+    return value.trim().toLowerCase();
+}
+
 function getWorkspaceRouteKey(): string {
     if (typeof window === "undefined") return "ssr";
     const pathParts = window.location.pathname.split("/").filter(Boolean);
-    const toLowerHex = (value: string): string => value.trim().toLowerCase();
     const maybePub =
-        pathParts.length > 0 ? toLowerHex(pathParts[pathParts.length - 1]) : "";
+        pathParts.length > 0
+            ? normalizeHex(pathParts[pathParts.length - 1])
+            : "";
     const rawHash = window.location.hash.startsWith("#")
         ? window.location.hash.slice(1)
         : "";
-    const maybePriv = rawHash ? toLowerHex(rawHash) : "";
+    const maybePriv = rawHash ? normalizeHex(rawHash) : "";
     return `${maybePub}#${maybePriv}`;
 }
 
@@ -300,7 +300,7 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
     const listRef = useRef<HTMLUListElement | null>(null);
     const [detached, setDetached] = useState<boolean>(doc.isDetached());
     const [showHistory, setShowHistory] = useState<boolean>(false);
-    const [online, setOnline] = useState<boolean>(false);
+    const [, setOnline] = useState<boolean>(false);
     const [connectionStatus, setConnectionStatus] =
         useState<ClientStatusValue>("connecting");
     const [latencyMs, setLatencyMs] = useState<number | null>(null);
@@ -482,96 +482,13 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
     useEffect(() => {
         if (!workspaceHex) return;
         const idleWindow = window as IdleWindow;
-        let disposed = false;
-        let dbRef: IDBDatabase | null = null;
-        let saveTimer: number | undefined;
-        let storage: StorageModule | null = null;
-        let pendingSave = false;
-        let ensureDbPromise: Promise<void> | null = null;
-        let ensureScheduled = false;
-        let idleHandle: number | undefined;
-        let ensureTimeout: number | undefined;
-
-        const scheduleSave = () => {
-            if (!dbRef || !storage) return;
-            if (saveTimer) window.clearTimeout(saveTimer);
-            saveTimer = window.setTimeout(async () => {
-                if (disposed || !dbRef || !storage) return;
-                try {
-                    const bytes = doc.export({ mode: "snapshot" as const });
-                    await storage.putDocSnapshot(dbRef, workspaceHex, bytes);
-                    pendingSave = false;
-                } catch (error) {
-                    // eslint-disable-next-line no-console
-                    console.warn("IndexedDB save failed:", error);
-                }
-            }, 400);
-        };
-
-        const ensureDb = async () => {
-            if (dbRef) return;
-            try {
-                const module = await loadStorageModule();
-                storage = module;
-                dbRef = await module.openDocDb();
-            } catch (error) {
-                // eslint-disable-next-line no-console
-                console.warn("IndexedDB open failed:", error);
-            } finally {
-                ensureScheduled = false;
-                if (!dbRef) {
-                    ensureDbPromise = null;
-                }
-                if (!disposed && pendingSave && dbRef && storage) {
-                    scheduleSave();
-                }
-            }
-        };
-
-        const scheduleEnsureDb = () => {
-            if (dbRef || ensureDbPromise || ensureScheduled) return;
-            ensureScheduled = true;
-            if (typeof idleWindow.requestIdleCallback === "function") {
-                idleHandle = idleWindow.requestIdleCallback(() => {
-                    idleHandle = undefined;
-                    ensureDbPromise = ensureDb();
-                });
-            } else {
-                ensureTimeout = window.setTimeout(() => {
-                    ensureTimeout = undefined;
-                    ensureDbPromise = ensureDb();
-                }, 350);
-            }
-        };
-
-        const markSaveNeeded = () => {
-            pendingSave = true;
-            if (dbRef && storage) {
-                scheduleSave();
-            } else {
-                scheduleEnsureDb();
-            }
-        };
-
-        scheduleEnsureDb();
-
-        const unsub = doc.subscribe(() => {
-            if (disposed) return;
-            markSaveNeeded();
+        const cleanup = setupWorkspacePersistence({
+            doc,
+            workspaceId: workspaceHex,
+            idleWindow,
         });
-
         return () => {
-            disposed = true;
-            unsub();
-            if (saveTimer) window.clearTimeout(saveTimer);
-            if (dbRef) dbRef.close();
-            if (
-                idleHandle !== undefined &&
-                typeof idleWindow.cancelIdleCallback === "function"
-            ) {
-                idleWindow.cancelIdleCallback(idleHandle);
-            }
-            if (ensureTimeout !== undefined) window.clearTimeout(ensureTimeout);
+            cleanup();
         };
     }, [doc, workspaceHex]);
 
@@ -584,11 +501,8 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
 
         const run = async () => {
             try {
-                const storage = await loadStorageModule();
-                const db = await storage.openDocDb();
-                const all = await storage.listWorkspaces(db);
+                const all = await listAllWorkspaces();
                 if (alive) setWorkspaces(all);
-                db.close();
             } catch (error) {
                 // eslint-disable-next-line no-console
                 console.warn("IndexedDB list workspaces failed:", error);
@@ -623,20 +537,13 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
         if (!workspaceHex) return;
         try {
             skipSnapshotOnUnloadRef.current = true;
-            const storage = await loadStorageModule();
-            const db = await storage.openDocDb();
-            try {
-                await storage.deleteWorkspace(db, workspaceHex);
-                const all = await storage.listWorkspaces(db);
-                setWorkspaces(all);
-                const next = all.find((w) => w.id !== workspaceHex) ?? null;
-                if (next) {
-                    window.location.assign(`/${next.id}#${next.privateHex}`);
-                } else {
-                    await createNewWorkspace();
-                }
-            } finally {
-                db.close();
+            const all = await deleteWorkspaceAndList(workspaceHex);
+            setWorkspaces(all);
+            const next = all.find((w) => w.id !== workspaceHex) ?? null;
+            if (next) {
+                window.location.assign(`/${next.id}#${next.privateHex}`);
+            } else {
+                await createNewWorkspace();
             }
         } catch (error) {
             // eslint-disable-next-line no-console
@@ -649,14 +556,7 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
     const persistSnapshotNow = useCallback(async (): Promise<void> => {
         if (!workspaceHex) return;
         try {
-            const storage = await loadStorageModule();
-            const db = await storage.openDocDb();
-            try {
-                const bytes = doc.export({ mode: "snapshot" as const });
-                await storage.putDocSnapshot(db, workspaceHex, bytes);
-            } finally {
-                db.close();
-            }
+            await saveWorkspaceSnapshot(doc, workspaceHex);
         } catch (error) {
             // eslint-disable-next-line no-console
             console.warn("Forced snapshot save failed:", error);
@@ -669,8 +569,8 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
             return;
         }
         try {
-            const snapshot = doc.export({ mode: "snapshot" as const });
-            const blob = new Blob([snapshot], {
+            const snapshot = doc.export({ mode: "snapshot" });
+            const blob = new Blob([snapshotToArrayBuffer(snapshot)], {
                 type: "application/octet-stream",
             });
             const url = URL.createObjectURL(blob);
@@ -754,22 +654,8 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
         let timer: number | undefined;
         timer = window.setTimeout(async () => {
             try {
-                const storage = await loadStorageModule();
-                const db = await storage.openDocDb();
-                try {
-                    const existing = await storage.getWorkspace(db, workspaceHex);
-                    if (existing) {
-                        const rec: WorkspaceRecord = {
-                            ...existing,
-                            name: workspaceTitle,
-                        };
-                        await storage.upsertWorkspace(db, rec);
-                        const all = await storage.listWorkspaces(db);
-                        setWorkspaces(all);
-                    }
-                } finally {
-                    db.close();
-                }
+                const all = await updateWorkspaceName(workspaceHex, workspaceTitle);
+                if (all) setWorkspaces(all);
             } catch (error) {
                 // eslint-disable-next-line no-console
                 console.warn("Persist workspace name failed:", error);
@@ -1118,7 +1004,7 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
                                         id: workspaceHex,
                                         name:
                                             workspaceTitle ||
-                                            `${workspaceHex.slice(0, 16)}`,
+                                            workspaceHex.slice(0, 16),
                                     });
                                 }
                                 for (const w of workspaces) {
@@ -1283,10 +1169,9 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
                         setNewText(e.target.value);
                     }}
                     onKeyDown={(e) => {
-                        const isComposing = (e.nativeEvent as KeyboardEvent)
-                            .isComposing;
-                        const isIMEKeyCode =
-                            (e.nativeEvent as KeyboardEvent).keyCode === 229;
+                        const nativeEvent = e.nativeEvent;
+                        const isComposing = nativeEvent.isComposing;
+                        const isIMEKeyCode = nativeEvent.keyCode === 229;
                         if (
                             e.key === "Enter" &&
                             !isComposing &&
@@ -1629,10 +1514,10 @@ export function App() {
                     const publicHex = await cryptoModule.exportRawPublicKeyHex(
                         imported.publicKey,
                     );
-                    const jwk = (await crypto.subtle.exportKey(
+                    const jwk = await crypto.subtle.exportKey(
                         "jwk",
                         imported.privateKey,
-                    )) as JsonWebKey;
+                    );
                     const privateHex = cryptoModule.bytesToHex(
                         cryptoModule.base64UrlToBytes(jwk.d ?? ""),
                     );
@@ -1646,20 +1531,14 @@ export function App() {
         }
 
         try {
-            const storage = await loadStorageModule();
-            const db = await storage.openDocDb();
-            try {
-                const all = await storage.listWorkspaces(db);
-                if (all.length > 0) {
-                    const latest = all[0];
-                    useResolvedWorkspace({
-                        publicHex: latest.id.toLowerCase(),
-                        privateHex: latest.privateHex.toLowerCase(),
-                    });
-                    return;
-                }
-            } finally {
-                db.close();
+            const all = await listAllWorkspaces();
+            if (all.length > 0) {
+                const latest = all[0];
+                useResolvedWorkspace({
+                    publicHex: latest.id.toLowerCase(),
+                    privateHex: latest.privateHex.toLowerCase(),
+                });
+                return;
             }
         } catch (error) {
             // eslint-disable-next-line no-console
@@ -1751,10 +1630,8 @@ function TodoItemRow({
     onHeightChange?: (cid: string, height: number) => void;
     style?: React.CSSProperties;
 }) {
-    const selection = React.useRef<{ start: number; end: number } | null>(null);
-    const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
+    const inputRef = React.useRef<HTMLDivElement | null>(null);
     const rowRef = React.useRef<HTMLLIElement | null>(null);
-    const isComposingRef = React.useRef<boolean>(false);
     const touchSkipChangeRef = React.useRef<boolean>(false);
     const [localText, setLocalText] = React.useState<string>(todo.text);
     const sanitizeSingleLine = React.useCallback((s: string): string => {
@@ -1762,35 +1639,28 @@ function TodoItemRow({
         return s.replace(/\r/g, "").replace(/\n/g, " ");
     }, []);
 
-    // Restore caret/selection after state-driven rerender
-    React.useLayoutEffect(() => {
-        if (localText.includes("\n")) {
-            setLocalText(sanitizeSingleLine(localText));
-        }
-        if (selection.current && inputRef.current) {
-            const { start, end } = selection.current;
-            try {
-                inputRef.current.setSelectionRange(start, end);
-            } catch {}
-            selection.current = null;
-        }
-        // Auto-resize textarea height to fit content
-        if (inputRef.current) {
-            const el = inputRef.current;
-            el.style.height = "auto";
-            el.style.height = `${el.scrollHeight}px`;
-        }
-    }, [localText]);
+    const handleEditorChange = React.useCallback(
+        (next: string, shouldCommit: boolean) => {
+            const sanitized = sanitizeSingleLine(next);
+            setLocalText(sanitized);
+            if (shouldCommit) {
+                onTextChange(todo.$cid, sanitized);
+            }
+        },
+        [onTextChange, sanitizeSingleLine, todo.$cid],
+    );
 
     // Keep local text in sync with CRDT text when not actively editing
     React.useEffect(() => {
-        const isFocused = document.activeElement === inputRef.current;
-        if (!isComposingRef.current && !isFocused) {
+        const el = inputRef.current;
+        const isFocused =
+            typeof document !== "undefined" && el ? document.activeElement === el : false;
+        if (!isFocused) {
             setLocalText(sanitizeSingleLine(todo.text));
         }
-        // If focused or composing, defer sync until editing finishes
+        // If focused, defer sync until editing finishes
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [todo.text]);
+    }, [sanitizeSingleLine, todo.text]);
 
     const isDone = todo.status === "done";
 
@@ -1876,7 +1746,7 @@ function TodoItemRow({
                         touchSkipChangeRef.current = false;
                     }
                 }}
-                onClick={(e) => {
+                onClick={() => {
                     if (detached) return;
                     if (touchSkipChangeRef.current) {
                         touchSkipChangeRef.current = false;
@@ -1885,68 +1755,15 @@ function TodoItemRow({
                     onDoneChange(todo.$cid, !isDone);
                 }}
             />
-            <textarea
+            <TodoTextInput
                 ref={inputRef}
-                className="todo-text"
                 value={localText}
-                rows={1}
-                onPointerDown={(e) => {
-                    if (textSelected || detached) return;
-                    if (e.pointerType === "touch" || e.pointerType === "pen") {
-                        // Prevent iOS long-press text selection when not selected yet
-                        if (e.cancelable) e.preventDefault();
-                        inputRef.current?.blur();
-                    }
-                }}
-                onFocus={(e) => {
-                    const el = e.currentTarget;
-                    el.style.height = "auto";
-                    el.style.height = `${el.scrollHeight}px`;
-                    onTextSelect?.(todo.$cid);
-                }}
-                onInput={(e) => {
-                    const el = e.currentTarget;
-                    el.style.height = "auto";
-                    el.style.height = `${el.scrollHeight}px`;
-                }}
-                onBlur={() => {
-                    onTextDeselect?.(todo.$cid);
-                }}
-                onKeyDown={(e) => {
-                    if (!isComposingRef.current && e.key === "Enter") {
-                        e.preventDefault();
-                    }
-                }}
-                onCompositionStart={() => {
-                    isComposingRef.current = true;
-                }}
-                onCompositionEnd={(e) => {
-                    isComposingRef.current = false;
-                    const start =
-                        e.currentTarget.selectionStart ??
-                        e.currentTarget.value.length;
-                    const end = e.currentTarget.selectionEnd ?? start;
-                    selection.current = { start, end };
-                    // Commit the composed text once composition finishes
-                    const v = sanitizeSingleLine(e.currentTarget.value);
-                    setLocalText(v);
-                    onTextChange(todo.$cid, v);
-                    const el = e.currentTarget;
-                    el.style.height = "auto";
-                    el.style.height = `${el.scrollHeight}px`;
-                }}
-                onChange={(e) => {
-                    const start =
-                        e.currentTarget.selectionStart ??
-                        e.currentTarget.value.length;
-                    const end = e.currentTarget.selectionEnd ?? start;
-                    selection.current = { start, end };
-                    const v = sanitizeSingleLine(e.currentTarget.value);
-                    setLocalText(v);
-                    if (isComposingRef.current) return;
-                    onTextChange(todo.$cid, v);
-                }}
-                readOnly={detached}
+                detached={detached}
+                textSelected={textSelected}
+                sanitize={sanitizeSingleLine}
+                onChange={handleEditorChange}
+                onSelect={onTextSelect ? () => onTextSelect(todo.$cid) : undefined}
+                onDeselect={onTextDeselect ? () => onTextDeselect(todo.$cid) : undefined}
             />
             <button
                 className="delete-btn"

@@ -35,9 +35,9 @@ async function handleNavigate(request) {
     try {
         const fresh = await fetch(request);
         const cache = await caches.open(CACHE_NAME);
-        cache.put("/", fresh.clone());
+        await cache.put("/", fresh.clone());
         return fresh;
-    } catch (err) {
+    } catch {
         const cache = await caches.open(CACHE_NAME);
         const cached =
             (await cache.match("/index.html")) || (await cache.match("/"));
@@ -56,7 +56,7 @@ async function handleAsset(request) {
     const fetchAndUpdate = fetch(request)
         .then((resp) => {
             if (resp && resp.status === 200 && resp.type !== "opaque") {
-                cache.put(request, resp.clone());
+                void cache.put(request, resp.clone());
             }
             return resp;
         })
@@ -68,8 +68,6 @@ async function handleAsset(request) {
 self.addEventListener("fetch", (event) => {
     const { request } = event;
     if (request.method !== "GET") return;
-
-    const url = new URL(request.url);
     // Handle navigation requests
     if (request.mode === "navigate") {
         event.respondWith(handleNavigate(request));
