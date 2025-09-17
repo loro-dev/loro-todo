@@ -1,0 +1,891 @@
+:root {
+    /* Light theme palette mapped to roles */
+    /* Background/Base */
+    --bg: #ebe4d2; /* Light Gray as page background */
+    --bg: #fffdf6;
+    --bg-elev: #ebe4d2; /* Light Gray for elevated surfaces */
+    --card: #e0e0c0; /* Soft Beige for cards */
+    --card: #ece1cd; /* Soft Beige for cards */
+    --card: #f6f2e2; /* Soft Beige for cards */
+    --border: #e0a0a0; /* Muted Pink (supporting) */
+
+    /* Text */
+    --text: #5a5a5a; /* softer, less dark text */
+    --muted: #7a6a6a;
+
+    /* Brand & Accents */
+    --brand: #e06040; /* Primary Brand */
+    --secondary: #e04080; /* Secondary Accent (Magenta Pink) */
+    --crimson: #e04060; /* Alt secondary */
+    --golden: #e08020; /* Feedback/Success */
+    --burnt: #e06020; /* Feedback/Warning */
+
+    /* Derivatives */
+    --ring: var(--border); /* muted focus for general controls */
+    --ring-strong: var(--brand); /* reserved for strong highlights */
+    --primary: var(--brand);
+    --primary-contrast: #ffffff;
+    --primary-hover: var(--crimson);
+    --secondary-hover: var(--crimson);
+
+    /* Disabled */
+    --disabled-bg: #dfdacd; /* Light Gray */
+    --disabled-text: #888888; /* Neutral gray text */
+    --disabled-border: #e0e0e0; /* Light Gray */
+
+    /* Buttons (base) */
+    --btn-bg: #e0e0c0; /* Soft Beige */
+    --btn-bg: var(--card); /* Soft Beige */
+    --btn-text: #3a3a3a;
+    --btn-border: var(--border);
+    --btn-bg-hover: #e0e0e0; /* Light Gray */
+
+    /* States */
+    --todo: #e0a0a0; /* Muted Pink */
+    --todo-text: #3a3a3a;
+    --inProgress: var(--burnt);
+    --inProgress-text: #3a3a3a;
+    --done: var(--golden);
+    --done-text: #3a3a3a;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+/* Ensure no white canvas shows above body (e.g., iOS safe area/overscroll) */
+html {
+    background: var(--bg);
+}
+
+body {
+    margin: 0;
+    font-family:
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        Segoe UI,
+        Roboto,
+        Noto Sans,
+        Ubuntu,
+        Cantarell,
+        Helvetica Neue,
+        Arial,
+        "Apple Color Emoji",
+        "Segoe UI Emoji";
+    /* Background base — overridden when body has .texture-bg */
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    background-image:
+        repeating-linear-gradient(
+            0deg,
+            rgba(75, 85, 99, 0.08),
+            rgba(75, 85, 99, 0.08) 2px,
+            transparent 2px,
+            transparent 6px
+        ),
+        repeating-linear-gradient(
+            90deg,
+            rgba(107, 114, 128, 0.06),
+            rgba(107, 114, 128, 0.06) 2px,
+            transparent 2px,
+            transparent 6px
+        ),
+        repeating-linear-gradient(
+            0deg,
+            rgba(55, 65, 81, 0.04),
+            rgba(55, 65, 81, 0.04) 1px,
+            transparent 1px,
+            transparent 12px
+        ),
+        repeating-linear-gradient(
+            90deg,
+            rgba(55, 65, 81, 0.04),
+            rgba(55, 65, 81, 0.04) 1px,
+            transparent 1px,
+            transparent 12px
+        );
+}
+
+.app {
+    max-width: 678px;
+    margin: 0 auto;
+    padding: 48px 24px 0px 36px;
+    position: relative;
+    z-index: 1;
+}
+
+.app-header h1 {
+    display: none;
+}
+
+/* Header layout: title left, status right */
+.app-header {
+    display: flex;
+    align-items: middle;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.subtitle {
+    display: none;
+}
+
+.card {
+    background: var(--card);
+    border: 1px solid color-mix(in oklab, var(--border) 60%, var(--card));
+    border-radius: 12px;
+}
+
+.new-todo {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto; /* input grows, Add stays right */
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.todo-input {
+    width: 100%;
+    min-width: 0; /* allow shrinking in grid next to button */
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    /* Higher contrast input inside beige card */
+    background: var(--card);
+    color: var(--text);
+    outline: none;
+    transition:
+        border-color 160ms ease,
+        background-color 160ms ease;
+}
+
+.todo-input:focus {
+    border-color: color-mix(in oklab, var(--brand) 28%, var(--border));
+    outline: none;
+}
+.todo-input::placeholder {
+    color: color-mix(in oklab, var(--muted) 80%, #ffffff);
+}
+
+.btn {
+    position: relative;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--btn-border);
+    background: var(--btn-bg);
+    color: var(--btn-text);
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    line-height: 1;
+    transition:
+        transform 120ms ease,
+        background 120ms ease,
+        border-color 120ms ease,
+        opacity 120ms ease;
+}
+
+/* Slightly larger icons inside buttons */
+.btn .btn-icon {
+    display: inline-block;
+    font-size: 22px;
+    line-height: 1;
+}
+.btn:hover:not(:disabled) {
+    /* More distinct hover shift */
+    background: color-mix(in oklab, var(--btn-bg) 92%, #ffffff);
+}
+.btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    /* Muted dominant look; no gradients */
+    background: var(--btn-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+.btn-primary:hover {
+    border-color: color-mix(in oklab, var(--brand) 30%, var(--border));
+    background: color-mix(in oklab, var(--btn-bg) 90%, #ffffff);
+}
+
+/* Secondary buttons: neutral base; accent on hover */
+.btn-secondary {
+    background: var(--btn-bg);
+    color: var(--text);
+    border: 1px solid var(--btn-border);
+}
+.btn-secondary:hover {
+    border-color: color-mix(in oklab, var(--secondary) 28%, var(--btn-border));
+    background: color-mix(in oklab, var(--btn-bg) 90%, #ffffff);
+}
+
+/* Disabled states fade toward neutral gray */
+.btn:disabled {
+    background: var(--disabled-bg) !important;
+    border-color: var(--disabled-border) !important;
+    color: var(--disabled-text) !important;
+    opacity: 1;
+    pointer-events: none;
+}
+
+.toolbar {
+    display: flex;
+    gap: 10px;
+    margin: 8px 0 18px;
+    align-items: center;
+}
+.toolbar .push-right {
+    margin-left: auto;
+}
+/* Uniform height for all controls in toolbar */
+.toolbar {
+    --toolbar-btn-height: 36px;
+}
+.toolbar .btn,
+.toolbar .btn-text {
+    height: var(--toolbar-btn-height);
+}
+.toolbar .btn-icon-only {
+    width: var(--toolbar-btn-height);
+    padding: 0; /* square; center icon */
+    justify-content: center;
+}
+.toolbar .btn {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+/* Text-style button (no bg/border), highlighted on hover */
+.btn-text {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    transition: background 120ms ease;
+}
+.btn-text:hover {
+    /* Subtle tint close to page background */
+    background: color-mix(in oklab, var(--bg) 94%, var(--brand) 6%);
+    cursor: pointer;
+    color: var(--text);
+}
+
+/* Online indicator: share padding/margins with .btn-text but no hover effect */
+.status-inline {
+    padding: 2px 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+/* Header controls spacing */
+.header-controls {
+    margin-top: 6px;
+    margin-bottom: 16px; /* extra space before new-todo row */
+}
+
+/* Workspace title */
+.workspace-title {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    /* Prevent the title area from exceeding viewport minus 100px */
+    max-width: calc(100vw - 100px);
+    min-width: 0;
+    /* Allow popover to render outside while title width is clamped */
+    overflow: visible;
+}
+.workspace-title-input {
+    width: auto;
+    display: inline-block;
+    min-width: 1ch;
+    /* Allow measured width to be clamped by parent max-width */
+    max-width: 100%;
+    padding: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    color: var(--brand);
+}
+.workspace-title-measure {
+    position: absolute;
+    left: -9999px;
+    top: -9999px;
+    visibility: hidden;
+    white-space: pre;
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+}
+.workspace-title-input,
+.workspace-title-measure {
+    transition: font-size 0.2s ease;
+}
+.workspace-title-input::placeholder {
+    color: color-mix(in oklab, var(--brand) 40%, var(--muted));
+}
+.workspace-title-input:disabled {
+    opacity: 0.6;
+}
+
+/* Title chevron + popover */
+.title-dropdown {
+    font-size: 22px; /* larger arrow icon */
+    margin-left: 0px;
+    color: var(--brand);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: transparent;
+}
+.title-dropdown:hover,
+.title-dropdown:focus-visible {
+    background: transparent;
+}
+.workspace-selector-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    padding: 8px;
+    background: var(--card);
+    border: 1px solid color-mix(in oklab, var(--border) 60%, var(--card));
+    border-radius: 10px;
+    z-index: 20;
+    /* Soft drop shadow for depth */
+    box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.12),
+        0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.ws-menu {
+    display: grid;
+    gap: 4px;
+    min-width: 240px;
+}
+.ws-item,
+.ws-action {
+    appearance: none;
+    -webkit-appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.ws-item:hover,
+.ws-action:hover {
+    background: color-mix(in oklab, var(--bg) 80%, var(--brand) 20%);
+}
+.ws-icon {
+    width: 1em;
+    height: 1em;
+}
+.ws-help-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--muted);
+}
+.ws-help-icon svg {
+    width: 1em;
+    height: 1em;
+}
+.ws-action:hover .ws-help-icon,
+.ws-action:focus-visible .ws-help-icon {
+    color: var(--text);
+}
+.ws-sep {
+    height: 1px;
+    background: color-mix(in oklab, var(--btn-border) 60%, var(--card));
+    margin: 6px 0;
+}
+.ws-empty {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 6px 8px;
+}
+
+/* Flat select control (no card UI), with hover highlight and chevron */
+.select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid transparent;
+    border-bottom-color: var(--btn-border);
+    border-radius: 0;
+    padding: 4px 26px 4px 6px; /* leave space for chevron */
+    font-size: 12px;
+    line-height: 1.2;
+    cursor: pointer;
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    background-size: 12px 12px;
+    /* inline SVG chevron using brand color */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23e04020' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+}
+.select:hover {
+    border-bottom-color: color-mix(
+        in oklab,
+        var(--brand) 45%,
+        var(--btn-border)
+    );
+}
+.select:focus {
+    outline: none;
+    border-bottom-color: color-mix(
+        in oklab,
+        var(--brand) 70%,
+        var(--btn-border)
+    );
+}
+
+.todo-list {
+    min-height: calc(100vh - 290px);
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    position: relative; /* container for absolutely positioned items */
+}
+
+.todo-item {
+    position: absolute; /* positioned via transform translateY */
+    display: flex; /* children vertically center, even with multi-line */
+    gap: 8px;
+    align-items: center;
+    padding: 6px 12px 6px 12px;
+    transition: transform 240ms ease;
+    will-change: transform;
+}
+
+.todo-item.selected {
+    border-color: color-mix(in oklab, var(--brand) 55%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--brand) 45%, transparent);
+}
+
+.todo-item.selected .todo-text {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+    caret-color: var(--text);
+}
+
+.todo-item.dragging {
+    box-shadow: 0 16px 32px rgba(17, 18, 19, 0.18);
+    cursor: grabbing;
+}
+
+.todo-item:not(.selected) .todo-text {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    caret-color: transparent;
+}
+
+/* Insertion preview line */
+.todo-item.insert-top::before,
+.todo-item.insert-bottom::after {
+    content: "";
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    height: 2px;
+    background: color-mix(in oklab, var(--brand) 60%, #ffffff);
+}
+.todo-item.insert-top::before {
+    top: -2px;
+}
+.todo-item.insert-bottom::after {
+    bottom: -2px;
+}
+
+.drag-handle {
+    position: absolute;
+    left: -34px; /* keep ~6px gap with larger size */
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    transition: opacity 120ms ease;
+    border: none;
+    background: transparent;
+    color: color-mix(in oklab, var(--brand) 70%, #ffffff); /* lighter brand */
+    border-radius: 8px;
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+}
+.drag-handle:active {
+    cursor: grabbing;
+}
+.todo-item:hover .drag-handle {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .drag-handle {
+        display: none;
+    }
+    .todo-item {
+        padding-left: 18px;
+    }
+}
+
+/* Deprecated drag-over visual removed in favor of insert line */
+
+.todo-checkbox {
+    /* Use content-box so border doesn't shrink content size */
+    box-sizing: content-box;
+    /* Keep visual size ~16px including 2px border on each side */
+    width: 12px;
+    height: 12px;
+    /* Prevent flexbox from shrinking below intended size on narrow rows */
+    flex: 0 0 auto;
+    min-width: 12px;
+    min-height: 12px;
+    background: transparent;
+    border: 2px solid var(--brand);
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    transition: border-color 120ms ease;
+}
+.todo-checkbox::after {
+    content: "";
+    /* Ensure pseudo element sizing is based on content only */
+    box-sizing: content-box;
+    width: 10px;
+    height: 10px;
+    transform: scale(0);
+    transition: transform 120ms ease;
+    background: var(--brand);
+    border-radius: 2px;
+}
+.todo-checkbox.checked::after {
+    transform: scale(1);
+}
+.todo-item.done .todo-checkbox {
+    border-color: var(--brand);
+}
+.todo-item.done .todo-checkbox.checked::after {
+    background: var(--disabled-text);
+}
+.todo-checkbox:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--brand) 36%, transparent);
+}
+
+.todo-checkbox.disabled {
+    opacity: 0.6;
+    cursor: default;
+    pointer-events: none;
+}
+
+.todo-text {
+    width: 100%;
+    min-width: 0; /* allow shrinking in flex */
+    flex: 1 1 auto; /* take remaining space, wrap as needed */
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    caret-color: var(--text);
+    -webkit-touch-callout: default;
+    font-family: inherit; /* match app font family */
+    font-size: 15px;
+    line-height: 1.35;
+    padding: 6px 1rem 6px 8px; /* leave space for floating delete button */
+    border-radius: 8px;
+    outline: none;
+    transition:
+        border-color 150ms ease,
+        background 150ms ease;
+    resize: none; /* textarea: no manual resize handle */
+    overflow: hidden; /* auto-resize hides scrollbars */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere; /* long words break to new lines */
+}
+
+.todo-text:focus {
+    outline: none;
+}
+
+.todo-item.done .todo-text {
+    text-decoration: line-through;
+    color: var(--disabled-text);
+}
+
+/* Delete button shown on row hover */
+.delete-btn {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    background: var(--card);
+    border: none;
+    color: var(--muted);
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition:
+        opacity 120ms ease,
+        color 120ms ease,
+        transform 80ms ease,
+        background 120ms ease;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.delete-btn:hover {
+    color: var(--text);
+    background: color-mix(in oklab, var(--card) 92%, #ffffff);
+}
+.delete-btn:active {
+    transform: translateY(1px);
+}
+.delete-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.todo-item:hover .delete-btn,
+.delete-btn:focus-visible {
+    opacity: 1;
+}
+
+/* Responsive tweaks */
+@media (max-width: 520px) {
+    /* Keep Add button on the right even on small screens */
+    .new-todo {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+}
+
+/* History View */
+.history {
+    margin: 10px 0 16px;
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+}
+.history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.history-title {
+    font-weight: 600;
+}
+.history-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+.history-count {
+    font-size: 12px;
+    color: var(--muted);
+}
+.history-status {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--btn-border);
+}
+.history-status.live {
+    color: var(--brand);
+    border-color: color-mix(in oklab, var(--brand) 60%, #fff);
+}
+.history-status.detached {
+    color: var(--muted);
+}
+.history-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+}
+.history-slider {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    accent-color: var(--brand);
+}
+.history-timestamp {
+    font-size: 12px;
+    color: var(--muted);
+}
+.history-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* Footer */
+.app-footer {
+    background: color-mix(in srgb, var(--bg) 50%, transparent);
+    padding: 12px 0px 16px;
+    border-top: 1px solid
+        color-mix(in oklab, var(--btn-border) 60%, var(--card));
+    color: var(--muted);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 32px;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    box-sizing: border-box;
+}
+.app-footer a {
+    color: var(--muted);
+    text-decoration: none;
+}
+.app-footer a:hover {
+    text-decoration: underline;
+}
+.app-footer .footer-gh {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px; /* icon size */
+    padding: 2px 6px;
+    border-radius: 6px;
+}
+.app-footer .footer-gh:hover {
+    background: color-mix(in oklab, var(--bg) 94%, var(--brand) 6%);
+}
+
+/* Toast */
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%);
+    z-index: 20; /* above footer (z:10) */
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid color-mix(in oklab, var(--btn-border) 60%, var(--card));
+    border-radius: 12px;
+    padding: 10px 14px;
+    pointer-events: none; /* avoid intercepting clicks */
+    animation: toast-in 140ms ease-out;
+    box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.12),
+        0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* Slider styling - brand colored track and thumb */
+.history-slider::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--brand) 18%, #ffffff);
+    border: 1px solid color-mix(in oklab, var(--brand) 65%, #ffffff);
+}
+.history-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--brand);
+    border: 2px solid #ffffff;
+    margin-top: -6px; /* center thumb on 6px track: (16-6)/2 */
+}
+.history-slider:focus {
+    outline: none;
+}
+.history-slider::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--brand) 18%, #ffffff);
+    border: 1px solid color-mix(in oklab, var(--brand) 65%, #ffffff);
+}
+.history-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--brand);
+    border: 2px solid #ffffff;
+}
+
+@media (max-width: 480px) {
+    .workspace-title-input,
+    .workspace-title-measure {
+        font-size: 1.5rem;
+    }
+
+    .app {
+        padding: 28px 16px 0px 16px;
+    }
+
+    .drag-handle {
+        left: -28px;
+    }
+
+    .title-dropdown {
+        width: 24px;
+        height: 24px;
+        font-size: 18px;
+        margin-left: -2px;
+    }
+
+    .todo-list {
+        min-height: calc(100vh - 260px);
+    }
+}

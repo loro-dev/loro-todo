@@ -1,0 +1,11 @@
+{
+  "name": "Loro Todo Example",
+  "short_name": "Loro Todo Example",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#ebe4d2",
+  "theme_color": "#e06040",
+  "description": "A lightweight React + Loro CRDT todo example that works offline.",
+  "icons": []
+}
