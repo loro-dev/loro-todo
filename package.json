@@ -15,8 +15,8 @@
     "loro-crdt": "^1.7.3",
     "loro-adaptors": "0.1.0",
     "loro-websocket": "0.1.2",
-    "loro-mirror": "0.1.0",
-    "loro-mirror-react": "0.1.0",
+    "loro-mirror": "0.1.1",
+    "loro-mirror-react": "0.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
