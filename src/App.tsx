@@ -324,6 +324,31 @@ export function LucideCode2(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+// Lucide Github icon for repository link
+// Icon from Lucide by Lucide Contributors - https://github.com/lucide-icons/lucide/blob/main/LICENSE
+export function LucideGithub(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="1em"
+      height="1em"
+      viewBox="0 0 24 24"
+      {...props}
+    >
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      >
+        <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5c.08-1.33-.35-2.63-1.2-3.65c.28-1.15.28-2.35 0-3.5c0 0-1-.3-3 1.2c-2.04-.56-4.2-.56-6.24 0c-2-1.5-3-1.2-3-1.2c-.28 1.15-.28 2.35 0 3.5C5.35 6.37 4.92 7.67 5 9c0 3.5 3 5.5 6 5.5c-.39.49-.68 1.05-.85 1.65c-.17.6-.22 1.23-.15 1.85V22" />
+        <path d="M9 18c-4 2-4-2-6-2" />
+      </g>
+    </svg>
+  );
+}
+
 export function IcSharpHistory(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -1404,6 +1429,19 @@ function WorkspaceSession({ workspace }: WorkspaceSessionProps) {
               Local-first and account-free—your edits live in this browser and
               mirror through Loro&apos;s relay for seven days so collaborators
               stay current.
+            </p>
+            <p className="help-paragraph">
+              This project is open source on{" "}
+              <a
+                href="https://github.com/loro-dev/loro-todo"
+                target="_blank"
+                rel="noreferrer"
+                className="help-inline-link help-github-link"
+              >
+                <LucideGithub className="help-github-icon" aria-hidden />
+                loro-dev/loro-todo
+              </a>
+              .
             </p>
             <div className="help-quick-cards">
               <article className="help-quick-card">

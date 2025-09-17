@@ -828,13 +828,20 @@ body {
     font-size: 0.85rem;
     border-radius: 999px;
     cursor: pointer;
-    transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+    transition:
+        background 140ms ease,
+        color 140ms ease,
+        border-color 140ms ease;
 }
 
 .help-close:hover,
 .help-close:focus-visible {
     color: var(--text);
-    border-color: color-mix(in oklab, var(--ring-strong) 50%, var(--btn-border));
+    border-color: color-mix(
+        in oklab,
+        var(--ring-strong) 50%,
+        var(--btn-border)
+    );
 }
 
 .help-close:focus-visible {
@@ -845,18 +852,49 @@ body {
     color: var(--text);
     font-weight: 600;
     text-decoration: none;
-    border-bottom: 1px solid color-mix(in oklab, var(--btn-border) 60%, var(--card));
+    border-bottom: 1px solid
+        color-mix(in oklab, var(--btn-border) 60%, var(--card));
 }
 
 .help-inline-link:hover {
     text-decoration: none;
-    border-color: color-mix(in oklab, var(--ring-strong) 40%, var(--btn-border));
+    border-color: color-mix(
+        in oklab,
+        var(--ring-strong) 40%,
+        var(--btn-border)
+    );
 }
 
 .help-lead {
     margin: 0;
     color: var(--text);
     font-size: 0.95rem;
+}
+
+.help-paragraph {
+    margin: 8px 0 0;
+    color: var(--text);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+.help-github-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: none;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transform: translateY(3px);
+}
+
+.help-github-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.help-github-link:hover {
+    text-decoration: underline;
 }
 
 .help-quick-cards {
@@ -913,7 +951,6 @@ body {
         gap: 12px;
         border-radius: 14px;
     }
-
 }
 
 @media (min-width: 960px) {
