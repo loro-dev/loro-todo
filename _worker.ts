@@ -8,6 +8,7 @@ interface Env {
 
 const WASM_CONTENT_TYPE = "application/wasm";
 const BROTLI_TOKEN = "br";
+const SPA_FALLBACK_PATH = "/index.html";
 
 function acceptsBrotli(headerValue: string | null): boolean {
     if (!headerValue) {
@@ -37,6 +38,42 @@ function appendVaryHeader(current: string | null, value: string): string {
     tokens.add(value);
 
     return Array.from(tokens).join(", ");
+}
+
+function acceptsHtml(headerValue: string | null): boolean {
+    if (!headerValue) {
+        return true;
+    }
+
+    return headerValue
+        .toLowerCase()
+        .split(",")
+        .some((entry) => entry.includes("text/html") || entry.includes("*/*"));
+}
+
+function hasFileExtension(pathname: string): boolean {
+    const lastSegment = pathname.split("/").pop();
+    if (!lastSegment) {
+        return false;
+    }
+
+    return lastSegment.includes(".");
+}
+
+function shouldServeSpaFallback(pathname: string): boolean {
+    if (pathname === "/") {
+        return false;
+    }
+
+    if (pathname.startsWith("/_")) {
+        return false;
+    }
+
+    if (pathname.startsWith("/cdn-cgi/")) {
+        return false;
+    }
+
+    return !hasFileExtension(pathname);
 }
 
 export default {
@@ -69,6 +106,30 @@ export default {
             }
         }
 
-        return env.ASSETS.fetch(request);
+        const assetResponse = await env.ASSETS.fetch(request);
+
+        if (
+            assetResponse.status === 404 &&
+            eligibleMethod &&
+            acceptsHtml(request.headers.get("Accept")) &&
+            shouldServeSpaFallback(url.pathname)
+        ) {
+            const fallbackUrl = new URL(SPA_FALLBACK_PATH, request.url);
+            const fallbackRequest = new Request(fallbackUrl.toString(), request);
+            const fallbackResponse = await env.ASSETS.fetch(fallbackRequest);
+
+            if (fallbackResponse.ok) {
+                const headers = new Headers(fallbackResponse.headers);
+                headers.set("Vary", appendVaryHeader(headers.get("Vary"), "Accept"));
+
+                return new Response(fallbackResponse.body, {
+                    status: fallbackResponse.status,
+                    statusText: fallbackResponse.statusText,
+                    headers,
+                });
+            }
+        }
+
+        return assetResponse;
     },
 };
