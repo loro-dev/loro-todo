@@ -63,6 +63,7 @@ function scrollByAmount(target: Element | Window, delta: number): void {
 
 type PendingLongPress = {
     pointerId: number;
+    pointerType: string;
     cid: string;
     timer: number | null;
     startX: number;
@@ -74,6 +75,7 @@ type PendingLongPress = {
 export type ManualDragState = {
     cid: string;
     pointerId: number;
+    pointerType: string;
     offsetY: number;
     clientY: number;
     listTop: number;
@@ -311,6 +313,7 @@ export function useLongPressDrag({
             const rect = ul.getBoundingClientRect();
             const cid = pending.cid;
             const pointerId = pending.pointerId;
+            const pointerType = pending.pointerType;
             const baseY = positions.pos[cid] ?? 0;
             const clientY = pending.lastClientY;
             const offsetY = clientY - (rect.top + baseY);
@@ -327,6 +330,7 @@ export function useLongPressDrag({
             setManualDrag({
                 cid,
                 pointerId,
+                pointerType,
                 offsetY,
                 clientY,
                 listTop: rect.top,
@@ -350,30 +354,18 @@ export function useLongPressDrag({
         };
     }, [clearPending]);
 
+    const dragActive = manualDrag != null;
+    const touchDragActive = manualDrag?.pointerType === "touch";
+
     useEffect(() => {
-        if (!manualDrag) return;
+        if (!dragActive) return;
+        if (typeof document === "undefined") return;
         const body = document.body;
-        const previousBodyTouchAction = body.style.touchAction;
-        const previousBodyUserSelect = body.style.userSelect;
-        body.style.touchAction = "none";
-        body.style.userSelect = "none";
-        const list = listRef.current;
-        const previousListTouchAction = list?.style.touchAction ?? null;
-        if (list) {
-            list.style.touchAction = "none";
-        }
+        body.classList.add("is-dragging");
         return () => {
-            body.style.touchAction = previousBodyTouchAction;
-            body.style.userSelect = previousBodyUserSelect;
-            if (list) {
-                if (previousListTouchAction !== null) {
-                    list.style.touchAction = previousListTouchAction;
-                } else {
-                    list.style.removeProperty("touch-action");
-                }
-            }
+            body.classList.remove("is-dragging");
         };
-    }, [manualDrag, listRef]);
+    }, [dragActive]);
 
     const handlePointerDown = useCallback(
         (cid: string, e: React.PointerEvent<HTMLLIElement>) => {
@@ -393,6 +385,7 @@ export function useLongPressDrag({
                 if (e.cancelable) e.preventDefault();
                 beginManualDrag({
                     pointerId,
+                    pointerType: e.pointerType,
                     cid,
                     timer: null,
                     startX: e.clientX,
@@ -411,6 +404,7 @@ export function useLongPressDrag({
             }, LONG_PRESS_MS);
             pendingRef.current = {
                 pointerId,
+                pointerType: e.pointerType,
                 cid,
                 timer,
                 startX: e.clientX,
@@ -513,24 +507,23 @@ export function useLongPressDrag({
     );
 
     useEffect(() => {
-        if (typeof document === "undefined") return;
-        if (!manualDrag) return;
-        const prevBodyTouchAction = document.body.style.touchAction;
-        const prevRootTouchAction =
-            document.documentElement.style.touchAction;
-        document.body.style.touchAction = "none";
-        document.documentElement.style.touchAction = "none";
-        return () => {
-            document.body.style.touchAction = prevBodyTouchAction;
-            document.documentElement.style.touchAction = prevRootTouchAction;
-        };
-    }, [manualDrag]);
-
-    useEffect(() => {
         if (!manualDrag) {
             stopAutoScroll();
         }
     }, [manualDrag, stopAutoScroll]);
+
+    useEffect(() => {
+        if (!touchDragActive) return;
+        const blockTouchMove = (event: TouchEvent) => {
+            if (!event.cancelable) return;
+            event.preventDefault();
+        };
+        const listenerOptions: AddEventListenerOptions = { passive: false };
+        window.addEventListener("touchmove", blockTouchMove, listenerOptions);
+        return () => {
+            window.removeEventListener("touchmove", blockTouchMove, listenerOptions);
+        };
+    }, [touchDragActive]);
 
     useEffect(() => {
         if (!manualDrag) return;

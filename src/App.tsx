@@ -458,6 +458,8 @@ function WorkspaceSession({
   const skipSnapshotOnUnloadRef = useRef<boolean>(false);
 
   const [selectedTextCid, setSelectedTextCid] = useState<string | null>(null);
+  const [transformTransitionsReady, setTransformTransitionsReady] =
+    useState<boolean>(false);
   const hasDone = useMemo(
     () => state.todos.some((t) => t.status === "done"),
     [state.todos],
@@ -473,6 +475,15 @@ function WorkspaceSession({
       return { ...prev, [cid]: h };
     });
   }, []);
+
+  useEffect(() => {
+    if (transformTransitionsReady) return;
+    if (state.todos.length === 0) return;
+    const raf = window.requestAnimationFrame(() => {
+      setTransformTransitionsReady(true);
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [state.todos.length, transformTransitionsReady]);
 
   const positions = useMemo(() => {
     let y = 0;
@@ -1548,7 +1559,9 @@ function WorkspaceSession({
               realIndex === state.todos.length - 1;
             const baseY = positions.pos[t.$cid] ?? 0;
             let translateY = baseY;
-            let transition = "transform 240ms ease";
+            let transition = transformTransitionsReady
+              ? "transform 240ms ease"
+              : "transform 0ms linear";
             let zIndex = 1;
             const activeDragCid = manualDrag?.cid ?? dragCid;
             const isManualActive = manualDrag?.cid === t.$cid;

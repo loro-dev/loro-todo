@@ -504,6 +504,7 @@ body {
     padding: 6px 12px 6px 12px;
     transition: transform 240ms ease;
     will-change: transform;
+    -webkit-touch-callout: none;
 }
 
 .todo-item.selected {
@@ -520,6 +521,16 @@ body {
 
 .todo-item.dragging {
     box-shadow: 0 16px 32px rgba(17, 18, 19, 0.18);
+    cursor: grabbing;
+}
+
+body.is-dragging {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+body.is-dragging .todo-item,
+body.is-dragging .drag-handle {
     cursor: grabbing;
 }
 
@@ -567,7 +578,9 @@ body {
     cursor: grab;
     -webkit-user-select: none;
     user-select: none;
-    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+    touch-action: manipulation;
 }
 .drag-handle:active {
     cursor: grabbing;
@@ -978,7 +991,8 @@ body {
 .app-footer {
     background: color-mix(in srgb, var(--bg) 50%, transparent);
     padding: 12px 0px 16px;
-    border-top: 1px solid color-mix(in oklab, var(--btn-border) 60%, var(--card));
+    border-top: 1px solid
+        color-mix(in oklab, var(--btn-border) 60%, var(--card));
     color: var(--muted);
     font-size: 12px;
     display: flex;
@@ -1084,7 +1098,7 @@ body {
     }
 
     .app {
-        padding: 28px 16px 0px 16px;
+        padding: 28px 16px 48px 16px;
     }
 
     .drag-handle {
