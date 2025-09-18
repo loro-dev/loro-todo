@@ -36,6 +36,7 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
     ) {
         const elementRef = React.useRef<HTMLDivElement | null>(null);
         const selectionRef = React.useRef<SelectionRange | null>(null);
+        // During IME composition we avoid mutating content/selection so the browser can manage the in-flight text.
         const isComposingRef = React.useRef(false);
         const [isCoarsePointer, setIsCoarsePointer] = React.useState<boolean>(() => {
             if (typeof window === "undefined") return false;
@@ -130,12 +131,15 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
         );
 
         const captureSelection = React.useCallback(() => {
+            // TODO: REVIEW [skips selection capture while IME composition is active]
+            if (isComposingRef.current) return;
             const offsets = getSelectionOffsets();
             if (offsets) selectionRef.current = offsets;
         }, [getSelectionOffsets]);
 
         const syncContentFromValue = React.useCallback(
             (nextValue: string) => {
+                if (isComposingRef.current) return;
                 const el = elementRef.current;
                 if (!el) return;
                 const sanitized = sanitize(nextValue);
@@ -146,9 +150,16 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
             [sanitize],
         );
 
+        // The browser dispatches an `input` right after `compositionend`; skip it because we already commit there.
+        const skipNextInputRef = React.useRef(false);
+
+        const handleCompositionStart = React.useCallback(() => {
+            isComposingRef.current = true;
+        }, []);
+
         React.useLayoutEffect(() => {
             syncContentFromValue(value);
-            if (selectionRef.current) {
+            if (!isComposingRef.current && selectionRef.current) {
                 const { start, end } = selectionRef.current;
                 applySelectionOffsets(start, end);
                 selectionRef.current = null;
@@ -170,9 +181,18 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                     el.textContent = value;
                     return;
                 }
-                const before = getSelectionOffsets();
+                if (skipNextInputRef.current) {
+                    skipNextInputRef.current = false;
+                    return;
+                }
+                if (isComposingRef.current) {
+                    // IME will supply the finalized text via `compositionend`; avoid interfering mid-stream.
+                    return;
+                }
+                // With the IME idle, sanitize and commit immediate edits while preserving the caret.
                 const raw = event.currentTarget.textContent ?? "";
                 const sanitized = sanitize(raw);
+                const before = getSelectionOffsets();
                 if (sanitized !== raw) {
                     event.currentTarget.textContent = sanitized;
                     const caret = before ? Math.min(before.start, sanitized.length) : sanitized.length;
@@ -181,7 +201,7 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                 } else if (before) {
                     selectionRef.current = before;
                 }
-                handleSanitizedChange(sanitized, !isComposingRef.current);
+                handleSanitizedChange(sanitized, true);
             },
             [
                 allowEditing,
@@ -225,6 +245,8 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
             (event) => {
                 if (!allowEditing) return;
                 isComposingRef.current = false;
+                skipNextInputRef.current = true;
+                // Commit the IME result exactly once: sanitize, restore selection, and propagate upstream.
                 const sanitized = sanitize(event.currentTarget.textContent ?? "");
                 if ((event.currentTarget.textContent ?? "") !== sanitized) {
                     event.currentTarget.textContent = sanitized;
@@ -294,9 +316,7 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                         event.preventDefault();
                     }
                 }}
-                onCompositionStart={() => {
-                    isComposingRef.current = true;
-                }}
+                onCompositionStart={handleCompositionStart}
                 onCompositionEnd={handleCompositionEnd}
                 onPaste={handlePaste}
                 onBeforeInput={(event) => {

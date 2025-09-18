@@ -7,6 +7,60 @@ import {
     type PointerEvent as ReactPointerEvent,
 } from "react";
 
+type AutoScrollDirection = -1 | 1;
+
+type AutoScrollState = {
+    container: Element | Window;
+    direction: AutoScrollDirection;
+    velocity: number;
+    frame: number | null;
+    pointerId: number;
+    lastClientY: number;
+};
+
+const EDGE_SCROLL_THRESHOLD_RATIO = 0.2;
+const EDGE_SCROLL_THRESHOLD_MIN = 40;
+const EDGE_SCROLL_THRESHOLD_MAX = 120;
+const EDGE_SCROLL_BASE_SPEED = 8;
+const EDGE_SCROLL_EXTRA_SPEED = 20;
+function isWindowTarget(target: Element | Window): target is Window {
+    return typeof window !== "undefined" && target === window;
+}
+
+function getScrollPosition(target: Element | Window): number {
+    if (typeof window === "undefined") return 0;
+    if (isWindowTarget(target)) {
+        return (
+            window.scrollY ||
+            window.pageYOffset ||
+            document.documentElement.scrollTop ||
+            document.body.scrollTop ||
+            0
+        );
+    }
+    return (target as Element).scrollTop;
+}
+
+function getMaxScroll(target: Element | Window): number {
+    if (typeof window === "undefined") return 0;
+    if (isWindowTarget(target)) {
+        const doc = document.documentElement;
+        return Math.max(0, doc.scrollHeight - window.innerHeight);
+    }
+    const el = target as Element;
+    return Math.max(0, el.scrollHeight - el.clientHeight);
+}
+
+function scrollByAmount(target: Element | Window, delta: number): void {
+    if (typeof window === "undefined" || delta === 0) return;
+    if (isWindowTarget(target)) {
+        window.scrollBy({ top: delta, left: 0, behavior: "auto" });
+        return;
+    }
+    const el = target as Element;
+    el.scrollTop += delta;
+}
+
 type PendingLongPress = {
     pointerId: number;
     cid: string;
@@ -67,6 +121,175 @@ export function useLongPressDrag({
 }: UseLongPressDragOptions): UseLongPressDragResult {
     const [manualDrag, setManualDrag] = useState<ManualDragState | null>(null);
     const pendingRef = useRef<PendingLongPress | null>(null);
+    const autoScrollRef = useRef<AutoScrollState | null>(null);
+    const onUpdateInsertIndexRef = useRef(onUpdateInsertIndex);
+
+    useEffect(() => {
+        onUpdateInsertIndexRef.current = onUpdateInsertIndex;
+    }, [onUpdateInsertIndex]);
+
+    const stopAutoScroll = useCallback(() => {
+        const state = autoScrollRef.current;
+        if (!state) return;
+        if (typeof window !== "undefined" && state.frame != null) {
+            window.cancelAnimationFrame(state.frame);
+        }
+        autoScrollRef.current = null;
+    }, []);
+
+    const runAutoScroll = useCallback(() => {
+        const state = autoScrollRef.current;
+        if (!state) {
+            return;
+        }
+        if (typeof window === "undefined") {
+            stopAutoScroll();
+            return;
+        }
+        const container = state.container;
+        const current = getScrollPosition(container);
+        const max = getMaxScroll(container);
+        if (
+            (state.direction < 0 && current <= 0) ||
+            (state.direction > 0 && current >= max)
+        ) {
+            stopAutoScroll();
+            return;
+        }
+        const delta = state.direction * state.velocity;
+        const before = current;
+        scrollByAmount(container, delta);
+        const after = getScrollPosition(container);
+        if (after === before) {
+            stopAutoScroll();
+            return;
+        }
+        const list = listRef.current;
+        if (list) {
+            const nextTop = list.getBoundingClientRect().top;
+            setManualDrag((prev) => {
+                if (!prev || prev.pointerId !== state.pointerId) return prev;
+                if (prev.listTop === nextTop) return prev;
+                return { ...prev, listTop: nextTop };
+            });
+        }
+        const updateInsertIndex = onUpdateInsertIndexRef.current;
+        updateInsertIndex(state.lastClientY);
+        if (autoScrollRef.current !== state) {
+            return;
+        }
+        state.frame = window.requestAnimationFrame(runAutoScroll);
+    }, [listRef, setManualDrag, stopAutoScroll]);
+
+    const startAutoScroll = useCallback(
+        (
+            params: {
+                container: Element | Window;
+                direction: AutoScrollDirection;
+                velocity: number;
+                pointerId: number;
+                clientY: number;
+            },
+        ) => {
+            if (typeof window === "undefined") return;
+            const { container, direction, velocity, pointerId, clientY } = params;
+            const existing = autoScrollRef.current;
+            if (
+                existing &&
+                existing.container === container &&
+                existing.pointerId === pointerId &&
+                existing.direction === direction
+            ) {
+                existing.velocity = velocity;
+                existing.lastClientY = clientY;
+                if (existing.frame == null) {
+                    existing.frame = window.requestAnimationFrame(runAutoScroll);
+                }
+                return;
+            }
+            stopAutoScroll();
+            const nextState: AutoScrollState = {
+                container,
+                direction,
+                velocity,
+                frame: null,
+                pointerId,
+                lastClientY: clientY,
+            };
+            autoScrollRef.current = nextState;
+            nextState.frame = window.requestAnimationFrame(runAutoScroll);
+        },
+        [runAutoScroll, stopAutoScroll],
+    );
+
+    const updateManualDragFromPointer = useCallback(
+        (pointerId: number, clientY: number) => {
+            setManualDrag((prev) => {
+                if (!prev || prev.pointerId !== pointerId) return prev;
+                const listTop =
+                    listRef.current?.getBoundingClientRect().top ?? prev.listTop;
+                if (prev.clientY === clientY && prev.listTop === listTop) return prev;
+                return { ...prev, clientY, listTop };
+            });
+        },
+        [listRef, setManualDrag],
+    );
+
+    // TODO: REVIEW [auto-scroll threshold tuning]
+    const evaluateAutoScroll = useCallback(
+        (clientY: number, pointerId: number) => {
+            const active = manualDrag;
+            if (!active || active.pointerId !== pointerId) {
+                stopAutoScroll();
+                return;
+            }
+            if (typeof window === "undefined") {
+                stopAutoScroll();
+                return;
+            }
+            const viewportHeight = window.innerHeight;
+            if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) {
+                stopAutoScroll();
+                return;
+            }
+            const thresholdDynamic = viewportHeight * EDGE_SCROLL_THRESHOLD_RATIO;
+            const threshold = Math.min(
+                EDGE_SCROLL_THRESHOLD_MAX,
+                Math.max(EDGE_SCROLL_THRESHOLD_MIN, thresholdDynamic),
+            );
+            const topBoundary = threshold;
+            const bottomBoundary = viewportHeight - threshold;
+            const container: Element | Window = window;
+            if (clientY < topBoundary) {
+                const distance = topBoundary - clientY;
+                const intensity = Math.min(1, distance / threshold);
+                const velocity = EDGE_SCROLL_BASE_SPEED + intensity * EDGE_SCROLL_EXTRA_SPEED;
+                startAutoScroll({
+                    container,
+                    direction: -1,
+                    velocity,
+                    pointerId,
+                    clientY,
+                });
+                return;
+            }
+            if (clientY > bottomBoundary) {
+                const distance = clientY - bottomBoundary;
+                const intensity = Math.min(1, distance / threshold);
+                const velocity = EDGE_SCROLL_BASE_SPEED + intensity * EDGE_SCROLL_EXTRA_SPEED;
+                startAutoScroll({
+                    container,
+                    direction: 1,
+                    velocity,
+                    pointerId,
+                    clientY,
+                });
+                return;
+            }
+            stopAutoScroll();
+        },
+        [manualDrag, startAutoScroll, stopAutoScroll],
+    );
 
     const clearPending = useCallback(() => {
         const pending = pendingRef.current;
@@ -84,6 +307,7 @@ export function useLongPressDrag({
             }
             const ul = listRef.current;
             if (!ul) return;
+            stopAutoScroll();
             const rect = ul.getBoundingClientRect();
             const cid = pending.cid;
             const pointerId = pending.pointerId;
@@ -116,6 +340,7 @@ export function useLongPressDrag({
             defaultHeight,
             onDragStart,
             onUpdateInsertIndex,
+            stopAutoScroll,
         ],
     );
 
@@ -209,12 +434,9 @@ export function useLongPressDrag({
             if (manualDrag && manualDrag.pointerId === pointerId && manualDrag.cid === cid) {
                 if (e.cancelable) e.preventDefault();
                 const clientY = e.clientY;
-                setManualDrag((prev) => {
-                    if (!prev || prev.pointerId !== pointerId) return prev;
-                    if (prev.clientY === clientY) return prev;
-                    return { ...prev, clientY };
-                });
+                updateManualDragFromPointer(pointerId, clientY);
                 onUpdateInsertIndex(clientY);
+                evaluateAutoScroll(clientY, pointerId);
                 return;
             }
             const pending = pendingRef.current;
@@ -231,12 +453,18 @@ export function useLongPressDrag({
                 }
             }
         },
-        [manualDrag, onUpdateInsertIndex],
+        [
+            manualDrag,
+            onUpdateInsertIndex,
+            updateManualDragFromPointer,
+            evaluateAutoScroll,
+        ],
     );
 
     const finalizeManualDrag = useCallback(
         (pointerId: number, cid: string | null, cancel: boolean) => {
             if (manualDrag && manualDrag.pointerId === pointerId) {
+                stopAutoScroll();
                 setManualDrag(null);
                 if (cancel) {
                     onDragEnd();
@@ -253,7 +481,7 @@ export function useLongPressDrag({
             }
             return false;
         },
-        [manualDrag, onCommitDrop, onDragEnd],
+        [manualDrag, onCommitDrop, onDragEnd, stopAutoScroll],
     );
 
     const handlePointerUp = useCallback(
@@ -299,18 +527,21 @@ export function useLongPressDrag({
     }, [manualDrag]);
 
     useEffect(() => {
+        if (!manualDrag) {
+            stopAutoScroll();
+        }
+    }, [manualDrag, stopAutoScroll]);
+
+    useEffect(() => {
         if (!manualDrag) return;
         const pointerId = manualDrag.pointerId;
         const onMove = (e: PointerEvent) => {
             if (e.pointerId !== pointerId) return;
             if (manualDrag.cid) {
                 const clientY = e.clientY;
-                setManualDrag((prev) => {
-                    if (!prev || prev.pointerId !== pointerId) return prev;
-                    if (prev.clientY === clientY) return prev;
-                    return { ...prev, clientY };
-                });
+                updateManualDragFromPointer(pointerId, clientY);
                 onUpdateInsertIndex(clientY);
+                evaluateAutoScroll(clientY, pointerId);
                 if (e.cancelable) e.preventDefault();
             }
         };
@@ -330,7 +561,13 @@ export function useLongPressDrag({
             window.removeEventListener("pointerup", onUp);
             window.removeEventListener("pointercancel", onCancel);
         };
-    }, [manualDrag, finalizeManualDrag, onUpdateInsertIndex]);
+    }, [
+        manualDrag,
+        finalizeManualDrag,
+        onUpdateInsertIndex,
+        updateManualDragFromPointer,
+        evaluateAutoScroll,
+    ]);
 
     return {
         manualDrag,
