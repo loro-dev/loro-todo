@@ -172,9 +172,22 @@ body {
         background-color 160ms ease;
 }
 
+.todo-input.is-selected {
+    border-color: color-mix(in oklab, var(--brand) 28%, var(--border));
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--brand) 18%, transparent);
+}
+
 .todo-input:focus {
     border-color: color-mix(in oklab, var(--brand) 28%, var(--border));
     outline: none;
+}
+
+.todo-text {
+    cursor: inherit;
+}
+
+.todo-text--fine {
+    cursor: text;
 }
 .todo-input::placeholder {
     color: color-mix(in oklab, var(--muted) 80%, #ffffff);

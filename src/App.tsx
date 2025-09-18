@@ -31,6 +31,8 @@ import { useLongPressDrag } from "./useLongPressDrag";
 import { NetworkStatusIndicator } from "./NetworkStatusIndicator";
 import { createPresenceScheduler, type IdleWindow } from "./state/presence";
 import { TodoTextInput } from "./TodoTextInput";
+import { SelectionProvider, useAppSelection } from "./selection";
+import { registerKeyboardHandlers } from "./keyboard";
 
 const HistoryView = React.lazy(() => import("./HistoryView"));
 
@@ -407,6 +409,53 @@ export function StreamlinePlumpRecycleBin2Remix(
   );
 }
 
+type KeyboardShortcutsBridgeProps = {
+  toggleItem: (cid: string) => void;
+  undo: () => void;
+  redo: () => void;
+  isMacLike: boolean;
+  moveItemUp: (cid: string) => void;
+  moveItemDown: (cid: string) => void;
+};
+
+function KeyboardShortcutsBridge({
+  toggleItem,
+  undo,
+  redo,
+  isMacLike,
+  moveItemUp,
+  moveItemDown,
+}: KeyboardShortcutsBridgeProps): null {
+  const selection = useAppSelection();
+  const { actions, ref } = selection;
+  const getSelectionState = useCallback(() => ref.current, [ref]);
+
+  useEffect(() => {
+    const cleanup = registerKeyboardHandlers({
+      getSelectionState,
+      actions,
+      toggleItem,
+      undo,
+      redo,
+      isMacLike,
+      moveItemUp,
+      moveItemDown,
+    });
+    return () => cleanup();
+  }, [
+    getSelectionState,
+    actions,
+    toggleItem,
+    undo,
+    redo,
+    isMacLike,
+    moveItemUp,
+    moveItemDown,
+  ]);
+
+  return null;
+}
+
 type WorkspaceSessionProps = {
   workspace: WorkspaceKeys;
   fallbackActive: boolean;
@@ -456,8 +505,9 @@ function WorkspaceSession({
   const helpDialogRef = useRef<HTMLDivElement | null>(null);
   // Flag to skip snapshot on navigations that intentionally delete the workspace
   const skipSnapshotOnUnloadRef = useRef<boolean>(false);
+  const newTodoInputRef = useRef<HTMLInputElement | null>(null);
+  const itemRefs = useRef<Map<string, HTMLLIElement>>(new Map());
 
-  const [selectedTextCid, setSelectedTextCid] = useState<string | null>(null);
   const [transformTransitionsReady, setTransformTransitionsReady] =
     useState<boolean>(false);
   const hasDone = useMemo(
@@ -497,6 +547,48 @@ function WorkspaceSession({
     return { pos, height } as const;
   }, [state.todos, itemHeights]);
 
+  const itemOrder = useMemo(
+    () => state.todos.map((todo) => todo.$cid),
+    [state.todos],
+  );
+
+  const resolveItemElement = useCallback(
+    (cid: string) => itemRefs.current.get(cid) ?? null,
+    [],
+  );
+
+  const resolveCreateInput = useCallback(() => newTodoInputRef.current, []);
+
+  const handleRowAttachment = useCallback(
+    (cid: string, element: HTMLLIElement | null) => {
+      if (element) {
+        itemRefs.current.set(cid, element);
+      } else {
+        itemRefs.current.delete(cid);
+      }
+    },
+    [],
+  );
+
+  const todosRef = useRef(state.todos);
+  useEffect(() => {
+    todosRef.current = state.todos;
+  }, [state.todos]);
+
+  const handleUndo = useCallback(() => {
+    undo.undo();
+  }, [undo]);
+
+  const handleRedo = useCallback(() => {
+    undo.redo();
+  }, [undo]);
+
+  const isMacLike = useMemo(() => {
+    if (typeof navigator === "undefined") return false;
+    const signature = navigator.platform || navigator.userAgent || "";
+    return /mac|ipod|iphone|ipad/i.test(signature);
+  }, []);
+
   const workspaceFileName = useMemo(() => {
     const fallback = workspaceHex || "workspace";
     const rawBase = workspaceTitle.trim() || fallback;
@@ -506,12 +598,6 @@ function WorkspaceSession({
     const base = safeBase.length > 0 ? safeBase : fallback;
     return `${base}.loro`;
   }, [workspaceHex, workspaceTitle]);
-
-  useEffect(() => {
-    if (!selectedTextCid) return;
-    if (state.todos.some((t) => t.$cid === selectedTextCid)) return;
-    setSelectedTextCid(null);
-  }, [selectedTextCid, state.todos]);
 
   useEffect(() => {
     if (showHelp) {
@@ -967,6 +1053,45 @@ function WorkspaceSession({
     [setState],
   );
 
+  const toggleTodo = useCallback(
+    (cid: string) => {
+      const current = todosRef.current.find((t) => t.$cid === cid);
+      if (!current) return;
+      handleDoneChange(cid, current.status !== "done");
+    },
+    [handleDoneChange],
+  );
+
+  const moveTodoByOffset = useCallback(
+    (cid: string, delta: -1 | 1) => {
+      if (delta !== -1 && delta !== 1) return;
+      void setState((s) => {
+        const fromIndex = s.todos.findIndex((x) => x.$cid === cid);
+        if (fromIndex === -1) return;
+        const targetIndex = fromIndex + delta;
+        if (targetIndex < 0 || targetIndex >= s.todos.length) return;
+        const tmp = s.todos[targetIndex];
+        s.todos[targetIndex] = s.todos[fromIndex];
+        s.todos[fromIndex] = tmp;
+      });
+    },
+    [setState],
+  );
+
+  const moveTodoUp = useCallback(
+    (cid: string) => {
+      moveTodoByOffset(cid, -1);
+    },
+    [moveTodoByOffset],
+  );
+
+  const moveTodoDown = useCallback(
+    (cid: string) => {
+      moveTodoByOffset(cid, 1);
+    },
+    [moveTodoByOffset],
+  );
+
   const handleDelete = useCallback(
     (cid: string) => {
       void setState((s) => {
@@ -1044,7 +1169,7 @@ function WorkspaceSession({
   );
 
   const shouldHandleLongPress = useCallback(
-    (cid: string, e: React.PointerEvent<HTMLLIElement>) => {
+    (_cid: string, e: React.PointerEvent<HTMLLIElement>) => {
       if (detached) return false;
       const target = e.target as HTMLElement | null;
       if (!target) return false;
@@ -1052,25 +1177,16 @@ function WorkspaceSession({
       if (e.pointerType === "mouse") {
         return !!target.closest(".drag-handle");
       }
-      const textarea = target.closest("textarea.todo-text");
-      if (textarea) {
-        return selectedTextCid !== cid;
+      if (target.closest(".todo-item.editing .todo-text")) {
+        return false;
       }
       if (target.closest("input, select, button, a")) {
         return false;
       }
       return true;
     },
-    [detached, selectedTextCid],
+    [detached],
   );
-
-  const handleTextSelect = useCallback((cid: string) => {
-    setSelectedTextCid(cid);
-  }, []);
-
-  const handleTextDeselect = useCallback((cid: string) => {
-    setSelectedTextCid((prev) => (prev === cid ? null : prev));
-  }, []);
 
   const {
     manualDrag,
@@ -1114,541 +1230,547 @@ function WorkspaceSession({
   }, [dragCid, updateInsertIndexFromPointer, commitDrop]);
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <div className="workspace-title" ref={wsTitleRef}>
-          <input
-            className="workspace-title-input"
-            ref={wsTitleInputRef}
-            value={workspaceTitle}
-            onChange={(e) => {
-              const v = e.currentTarget.value;
-              setWorkspaceTitle(v);
-              if (wsDebounceRef.current)
-                window.clearTimeout(wsDebounceRef.current);
-              wsDebounceRef.current = window.setTimeout(() => {
-                void setState((s) => {
-                  s.workspace.name = v;
-                });
-              }, 300);
-            }}
-            placeholder="Workspace name"
-            disabled={detached}
-            aria-label="Workspace name"
-          />
-          <span
-            className="workspace-title-measure"
-            ref={wsMeasureRef}
-            aria-hidden
-          >
-            {workspaceTitle || "Untitled List"}
-          </span>
-          <button
-            className="title-dropdown btn-text"
-            type="button"
-            onClick={() => setShowWsMenu((v) => !v)}
-            aria-label="Switch workspace"
-            title="Switch workspace"
-            disabled={false}
-          >
-            <MaterialSymbolsKeyboardArrowDown />
-          </button>
-          {showWsMenu && (
-            <div className="workspace-selector-pop" ref={wsMenuRef} role="menu">
-              {(() => {
-                const options: { id: string; name: string }[] = [];
-                if (workspaceHex) {
-                  options.push({
-                    id: workspaceHex,
-                    name: workspaceTitle || workspaceHex.slice(0, 16),
+    <SelectionProvider
+      itemOrder={itemOrder}
+      resolveItemElement={resolveItemElement}
+      resolveCreateInput={resolveCreateInput}
+    >
+      <KeyboardShortcutsBridge
+        toggleItem={toggleTodo}
+        undo={handleUndo}
+        redo={handleRedo}
+        isMacLike={isMacLike}
+        moveItemUp={moveTodoUp}
+        moveItemDown={moveTodoDown}
+      />
+      <div className="app">
+        <header className="app-header">
+          <div className="workspace-title" ref={wsTitleRef}>
+            <input
+              className="workspace-title-input"
+              ref={wsTitleInputRef}
+              value={workspaceTitle}
+              onChange={(e) => {
+                const v = e.currentTarget.value;
+                setWorkspaceTitle(v);
+                if (wsDebounceRef.current)
+                  window.clearTimeout(wsDebounceRef.current);
+                wsDebounceRef.current = window.setTimeout(() => {
+                  void setState((s) => {
+                    s.workspace.name = v;
                   });
-                }
-                for (const w of workspaces) {
-                  if (w.id === workspaceHex) continue;
-                  options.push({
-                    id: w.id,
-                    name: w.name || w.label || w.id.slice(0, 16),
-                  });
-                }
-                const onChoose = async (id: string) => {
-                  // Force-save current snapshot before navigating
-                  await persistSnapshotNow();
-                  await switchToWorkspace(id);
-                  setShowWsMenu(false);
-                };
-                const onCreate = async () => {
-                  // Force-save current snapshot before navigating
-                  await persistSnapshotNow();
-                  await createNewWorkspace();
-                  setShowWsMenu(false);
-                };
-                const onDelete = async () => {
-                  await removeCurrentWorkspace();
-                  setShowWsMenu(false);
-                };
-                const onJoin = async () => {
-                  const input = window.prompt(
-                    "Paste the invite URL to join:",
-                    "",
-                  );
-                  if (!input) return;
-                  const url = input.trim();
-                  try {
-                    if (workspaceHex) {
-                      await persistSnapshotNow();
-                    }
-                  } finally {
-                    setShowWsMenu(false);
-                    window.location.assign(url);
+                }, 300);
+              }}
+              placeholder="Workspace name"
+              disabled={detached}
+              aria-label="Workspace name"
+            />
+            <span
+              className="workspace-title-measure"
+              ref={wsMeasureRef}
+              aria-hidden
+            >
+              {workspaceTitle || "Untitled List"}
+            </span>
+            <button
+              className="title-dropdown btn-text"
+              type="button"
+              onClick={() => setShowWsMenu((v) => !v)}
+              aria-label="Switch workspace"
+              title="Switch workspace"
+              disabled={false}
+            >
+              <MaterialSymbolsKeyboardArrowDown />
+            </button>
+            {showWsMenu && (
+              <div
+                className="workspace-selector-pop"
+                ref={wsMenuRef}
+                role="menu"
+              >
+                {(() => {
+                  const options: { id: string; name: string }[] = [];
+                  if (workspaceHex) {
+                    options.push({
+                      id: workspaceHex,
+                      name: workspaceTitle || workspaceHex.slice(0, 16),
+                    });
                   }
-                };
-                return (
-                  <div className="ws-menu">
-                    {options.length === 0 && (
-                      <div className="ws-empty">No workspaces</div>
-                    )}
-                    {options.map(({ id, name }) => (
+                  for (const w of workspaces) {
+                    if (w.id === workspaceHex) continue;
+                    options.push({
+                      id: w.id,
+                      name: w.name || w.label || w.id.slice(0, 16),
+                    });
+                  }
+                  const onChoose = async (id: string) => {
+                    // Force-save current snapshot before navigating
+                    await persistSnapshotNow();
+                    await switchToWorkspace(id);
+                    setShowWsMenu(false);
+                  };
+                  const onCreate = async () => {
+                    // Force-save current snapshot before navigating
+                    await persistSnapshotNow();
+                    await createNewWorkspace();
+                    setShowWsMenu(false);
+                  };
+                  const onDelete = async () => {
+                    await removeCurrentWorkspace();
+                    setShowWsMenu(false);
+                  };
+                  const onJoin = async () => {
+                    const input = window.prompt(
+                      "Paste the invite URL to join:",
+                      "",
+                    );
+                    if (!input) return;
+                    const url = input.trim();
+                    try {
+                      if (workspaceHex) {
+                        await persistSnapshotNow();
+                      }
+                    } finally {
+                      setShowWsMenu(false);
+                      window.location.assign(url);
+                    }
+                  };
+                  return (
+                    <div className="ws-menu">
+                      {options.length === 0 && (
+                        <div className="ws-empty">No workspaces</div>
+                      )}
+                      {options.map(({ id, name }) => (
+                        <button
+                          key={id}
+                          className={`ws-item${id === workspaceHex ? " current" : ""}`}
+                          onClick={() => void onChoose(id)}
+                          role="menuitem"
+                        >
+                          {name}
+                        </button>
+                      ))}
+                      <div className="ws-sep" />
                       <button
-                        key={id}
-                        className={`ws-item${id === workspaceHex ? " current" : ""}`}
-                        onClick={() => void onChoose(id)}
+                        className="ws-action"
+                        onClick={handleExportWorkspace}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <MdiTrayArrowUp className="ws-icon" aria-hidden />
+                        <span>Export</span>
+                        <span
+                          className="ws-help-icon"
+                          title="Exports a .loro CRDT snapshot (loro.dev format)"
+                        >
+                          <MdiHelpCircleOutline aria-hidden />
+                        </span>
+                      </button>
+                      <button
+                        className="ws-action"
+                        onClick={handleRequestImport}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <MdiTrayArrowDown className="ws-icon" aria-hidden />
+                        <span>Import</span>
+                        <span
+                          className="ws-help-icon"
+                          title="Imports a .loro CRDT snapshot (loro.dev format) into this workspace"
+                        >
+                          <MdiHelpCircleOutline aria-hidden />
+                        </span>
+                      </button>
+                      <button
+                        className="ws-action"
+                        onClick={() => void onJoin()}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <MdiLinkVariant className="ws-icon" aria-hidden />
+                        Join by URL…
+                      </button>
+                      <button
+                        className="ws-action"
+                        onClick={() => void onCreate()}
                         role="menuitem"
                       >
-                        {name}
+                        ＋ New workspace…
                       </button>
-                    ))}
-                    <div className="ws-sep" />
-                    <button
-                      className="ws-action"
-                      onClick={handleExportWorkspace}
-                      role="menuitem"
-                      type="button"
-                    >
-                      <MdiTrayArrowUp className="ws-icon" aria-hidden />
-                      <span>Export</span>
-                      <span
-                        className="ws-help-icon"
-                        title="Exports a .loro CRDT snapshot (loro.dev format)"
-                      >
-                        <MdiHelpCircleOutline aria-hidden />
-                      </span>
-                    </button>
-                    <button
-                      className="ws-action"
-                      onClick={handleRequestImport}
-                      role="menuitem"
-                      type="button"
-                    >
-                      <MdiTrayArrowDown className="ws-icon" aria-hidden />
-                      <span>Import</span>
-                      <span
-                        className="ws-help-icon"
-                        title="Imports a .loro CRDT snapshot (loro.dev format) into this workspace"
-                      >
-                        <MdiHelpCircleOutline aria-hidden />
-                      </span>
-                    </button>
-                    <button
-                      className="ws-action"
-                      onClick={() => void onJoin()}
-                      role="menuitem"
-                      type="button"
-                    >
-                      <MdiLinkVariant className="ws-icon" aria-hidden />
-                      Join by URL…
-                    </button>
-                    <button
-                      className="ws-action"
-                      onClick={() => void onCreate()}
-                      role="menuitem"
-                    >
-                      ＋ New workspace…
-                    </button>
-                    {workspaceHex && (
-                      <button
-                        className="ws-action danger"
-                        onClick={() => void onDelete()}
-                        role="menuitem"
-                      >
-                        <StreamlinePlumpRecycleBin2Remix /> Delete current…
-                      </button>
-                    )}
-                  </div>
-                );
-              })()}
+                      {workspaceHex && (
+                        <button
+                          className="ws-action danger"
+                          onClick={() => void onDelete()}
+                          role="menuitem"
+                        >
+                          <StreamlinePlumpRecycleBin2Remix /> Delete current…
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+            <input
+              ref={wsImportInputRef}
+              type="file"
+              accept=".loro,application/octet-stream"
+              style={{ display: "none" }}
+              onChange={(event) => {
+                void handleImportFileChange(event);
+              }}
+            />
+          </div>
+          <NetworkStatusIndicator
+            connectionStatus={connectionStatus}
+            presenceCount={presenceCount}
+            presencePeers={presencePeers}
+            latencyMs={latencyMs}
+            onRequestToast={handleStatusToast}
+          />
+          {fallbackActive && (
+            <div className="fallback-banner" role="alert" aria-live="assertive">
+              Sync is offline because Web Crypto isn't available. Serve the app
+              over HTTPS or localhost to re-enable public sync.
             </div>
           )}
-          <input
-            ref={wsImportInputRef}
-            type="file"
-            accept=".loro,application/octet-stream"
-            style={{ display: "none" }}
-            onChange={(event) => {
-              void handleImportFileChange(event);
-            }}
+          {/* Room ID inline display removed; shown via selector options */}
+        </header>
+
+        <div className="new-todo">
+          <NewTodoInput
+            inputRef={newTodoInputRef}
+            value={newText}
+            detached={detached}
+            onChange={setNewText}
+            onSubmit={() => addTodo(newText)}
           />
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              addTodo(newText);
+            }}
+            disabled={detached}
+          >
+            Add
+          </button>
         </div>
-        <NetworkStatusIndicator
-          connectionStatus={connectionStatus}
-          presenceCount={presenceCount}
-          presencePeers={presencePeers}
-          latencyMs={latencyMs}
-          onRequestToast={handleStatusToast}
-        />
-        {fallbackActive && (
-          <div className="fallback-banner" role="alert" aria-live="assertive">
-            Sync is offline because Web Crypto isn't available. Serve the app
-            over HTTPS or localhost to re-enable public sync.
+
+        <div className="toolbar">
+          <button
+            className="btn btn-secondary btn-icon-only"
+            onClick={() => {
+              undo.undo();
+            }}
+            disabled={!undo.canUndo?.() || detached}
+            aria-label="Undo"
+            title="Undo"
+          >
+            <LucideUndo2 className="btn-icon" aria-hidden />
+          </button>
+          <button
+            className="btn btn-secondary btn-icon-only"
+            onClick={() => {
+              undo.redo();
+            }}
+            disabled={!undo.canRedo?.() || detached}
+            aria-label="Redo"
+            title="Redo"
+          >
+            <LucideUndo2
+              className="btn-icon"
+              style={{ transform: "scaleX(-1)" }}
+              aria-hidden
+            />
+          </button>
+          <button
+            className="btn btn-secondary btn-icon-only"
+            onClick={() =>
+              void setState((s) => {
+                for (let i = s.todos.length - 1; i >= 0; i--) {
+                  if (s.todos[i].status === "done") {
+                    s.todos.splice(i, 1);
+                  }
+                }
+              })
+            }
+            disabled={detached || !hasDone}
+            aria-label="Clear completed"
+            title="Clear completed"
+          >
+            <MdiBroom className="btn-icon" aria-hidden />
+          </button>
+          <button
+            className="btn btn-secondary push-right"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(shareUrl);
+                if (toastTimerRef.current)
+                  window.clearTimeout(toastTimerRef.current);
+                setToast("Invite link copied");
+                toastTimerRef.current = window.setTimeout(() => {
+                  setToast(null);
+                }, TOAST_DURATION_MS);
+              } catch {
+                // Fallback: prompt
+                window.prompt("Copy this invite URL and share it:", shareUrl);
+              }
+            }}
+            title="Copy invite URL"
+          >
+            Share
+          </button>
+          <button
+            className={
+              "btn btn-secondary " + (showHistory ? "" : "btn-icon-only")
+            }
+            onClick={() => setShowHistory((v) => !v)}
+            aria-expanded={showHistory}
+            aria-controls="workspace-history"
+          >
+            {showHistory ? (
+              "Hide History"
+            ) : (
+              <IcSharpHistory className="btn-icon" />
+            )}
+          </button>
+          <button
+            className={"btn btn-secondary " + (showHelp ? "" : "btn-icon-only")}
+            ref={helpButtonRef}
+            type="button"
+            onClick={() => setShowHelp((v) => !v)}
+            aria-label="About Loro"
+            aria-expanded={showHelp}
+            aria-controls="loro-help-panel"
+            aria-haspopup="dialog"
+            title={showHelp ? "Hide help" : "About Loro"}
+          >
+            {showHelp ? (
+              "Hide Help"
+            ) : (
+              <LucideInfo className="btn-icon" aria-hidden />
+            )}
+          </button>
+        </div>
+        {showHelp && (
+          <div
+            className="help-backdrop"
+            role="presentation"
+            onClick={() => setShowHelp(false)}
+          >
+            <section
+              id="loro-help-panel"
+              ref={helpDialogRef}
+              className="help-card card help-dialog"
+              aria-label="About Loro"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="loro-help-title"
+              tabIndex={-1}
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <header className="help-header">
+                <h2 className="help-title" id="loro-help-title">
+                  About
+                </h2>
+                <button
+                  type="button"
+                  className="help-close"
+                  onClick={() => setShowHelp(false)}
+                  aria-label="Close help dialog"
+                  title="Close"
+                >
+                  Close
+                </button>
+              </header>
+              <p className="help-lead">
+                This example to-do app is powered by Loro. It stays local-first
+                and account-free, keeping your edits in this browser while
+                mirroring them through Loro&apos;s relay for seven days so
+                everyone stays in sync.
+              </p>
+              <div className="help-quick-cards">
+                <article className="help-quick-card">
+                  <LucideUsers className="help-card-icon" aria-hidden />
+                  <div>
+                    <h3>Invite instantly</h3>
+                    <p>Share the link to co-edit live.</p>
+                  </div>
+                </article>
+                <article className="help-quick-card">
+                  <LucideWifiOff className="help-card-icon" aria-hidden />
+                  <div>
+                    <h3>Stay offline</h3>
+                    <p>
+                      Keep working offline; Loro merges edits when you
+                      reconnect.
+                    </p>
+                  </div>
+                </article>
+                <article className="help-quick-card">
+                  <LucideCode2 className="help-card-icon" aria-hidden />
+                  <div>
+                    <h3>
+                      Build with{" "}
+                      <a
+                        href="https://loro.dev"
+                        target="_blank"
+                        style={{ color: "currentcolor" }}
+                      >
+                        Loro
+                      </a>
+                    </h3>
+                    <p>
+                      Developers can ship collaborative apps like this with the
+                      same toolkit.
+                    </p>
+                  </div>
+                </article>
+              </div>
+              <p className="help-paragraph">
+                Open source on{" "}
+                <a
+                  href="https://github.com/loro-dev/loro-todo"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="help-inline-link help-github-link"
+                >
+                  <LucideGithub className="help-github-icon" aria-hidden />
+                  loro-dev/loro-todo
+                </a>
+                .
+              </p>
+            </section>
           </div>
         )}
-        {/* Room ID inline display removed; shown via selector options */}
-      </header>
-
-      <div className="new-todo">
-        <input
-          className="todo-input"
-          style={{ fontSize: 15 }}
-          placeholder="Add a todo..."
-          value={newText}
-          onChange={(e) => {
-            setNewText(e.target.value);
-          }}
-          onKeyDown={(e) => {
-            const nativeEvent = e.nativeEvent;
-            const isComposing = nativeEvent.isComposing;
-            const isIMEKeyCode = nativeEvent.keyCode === 229;
-            if (e.key === "Enter" && !isComposing && !isIMEKeyCode) {
-              e.preventDefault();
-              addTodo(newText);
-            }
-          }}
-          disabled={detached}
-        />
-        <button
-          className="btn btn-primary"
-          onClick={() => {
-            addTodo(newText);
-          }}
-          disabled={detached}
-        >
-          Add
-        </button>
-      </div>
-
-      <div className="toolbar">
-        <button
-          className="btn btn-secondary btn-icon-only"
-          onClick={() => {
-            undo.undo();
-          }}
-          disabled={!undo.canUndo?.() || detached}
-          aria-label="Undo"
-          title="Undo"
-        >
-          <LucideUndo2 className="btn-icon" aria-hidden />
-        </button>
-        <button
-          className="btn btn-secondary btn-icon-only"
-          onClick={() => {
-            undo.redo();
-          }}
-          disabled={!undo.canRedo?.() || detached}
-          aria-label="Redo"
-          title="Redo"
-        >
-          <LucideUndo2
-            className="btn-icon"
-            style={{ transform: "scaleX(-1)" }}
-            aria-hidden
-          />
-        </button>
-        <button
-          className="btn btn-secondary btn-icon-only"
-          onClick={() =>
-            void setState((s) => {
-              for (let i = s.todos.length - 1; i >= 0; i--) {
-                if (s.todos[i].status === "done") {
-                  s.todos.splice(i, 1);
-                }
-              }
-            })
-          }
-          disabled={detached || !hasDone}
-          aria-label="Clear completed"
-          title="Clear completed"
-        >
-          <MdiBroom className="btn-icon" aria-hidden />
-        </button>
-        <button
-          className="btn btn-secondary push-right"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(shareUrl);
-              if (toastTimerRef.current)
-                window.clearTimeout(toastTimerRef.current);
-              setToast("Invite link copied");
-              toastTimerRef.current = window.setTimeout(() => {
-                setToast(null);
-              }, TOAST_DURATION_MS);
-            } catch {
-              // Fallback: prompt
-              window.prompt("Copy this invite URL and share it:", shareUrl);
-            }
-          }}
-          title="Copy invite URL"
-        >
-          Share
-        </button>
-        <button
-          className={
-            "btn btn-secondary " + (showHistory ? "" : "btn-icon-only")
-          }
-          onClick={() => setShowHistory((v) => !v)}
-          aria-expanded={showHistory}
-          aria-controls="workspace-history"
-        >
-          {showHistory ? (
-            "Hide History"
-          ) : (
-            <IcSharpHistory className="btn-icon" />
-          )}
-        </button>
-        <button
-          className={"btn btn-secondary " + (showHelp ? "" : "btn-icon-only")}
-          ref={helpButtonRef}
-          type="button"
-          onClick={() => setShowHelp((v) => !v)}
-          aria-label="About Loro"
-          aria-expanded={showHelp}
-          aria-controls="loro-help-panel"
-          aria-haspopup="dialog"
-          title={showHelp ? "Hide help" : "About Loro"}
-        >
-          {showHelp ? (
-            "Hide Help"
-          ) : (
-            <LucideInfo className="btn-icon" aria-hidden />
-          )}
-        </button>
-      </div>
-      {showHelp && (
-        <div
-          className="help-backdrop"
-          role="presentation"
-          onClick={() => setShowHelp(false)}
-        >
-          <section
-            id="loro-help-panel"
-            ref={helpDialogRef}
-            className="help-card card help-dialog"
-            aria-label="About Loro"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="loro-help-title"
-            tabIndex={-1}
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <header className="help-header">
-              <h2 className="help-title" id="loro-help-title">
-                About
-              </h2>
-              <button
-                type="button"
-                className="help-close"
-                onClick={() => setShowHelp(false)}
-                aria-label="Close help dialog"
-                title="Close"
-              >
-                Close
-              </button>
-            </header>
-            <p className="help-lead">
-              This example to-do app is powered by Loro. It stays local-first
-              and account-free, keeping your edits in this browser while
-              mirroring them through Loro&apos;s relay for seven days so everyone
-              stays in sync.
-            </p>
-            <div className="help-quick-cards">
-              <article className="help-quick-card">
-                <LucideUsers className="help-card-icon" aria-hidden />
-                <div>
-                  <h3>Invite instantly</h3>
-                  <p>Share the link to co-edit live.</p>
-                </div>
-              </article>
-              <article className="help-quick-card">
-                <LucideWifiOff className="help-card-icon" aria-hidden />
-                <div>
-                  <h3>Stay offline</h3>
-                  <p>
-                    Keep working offline; Loro merges edits when you reconnect.
-                  </p>
-                </div>
-              </article>
-              <article className="help-quick-card">
-                <LucideCode2 className="help-card-icon" aria-hidden />
-                <div>
-                  <h3>
-                    Build with{" "}
-                    <a
-                      href="https://loro.dev"
-                      target="_blank"
-                      style={{ color: "currentcolor" }}
-                    >
-                      Loro
-                    </a>
-                  </h3>
-                  <p>
-                    Developers can ship collaborative apps like this with the
-                    same toolkit.
-                  </p>
-                </div>
-              </article>
+        {showHistory && (
+          <Suspense fallback={null}>
+            <div id="workspace-history">
+              <HistoryView doc={doc} />
             </div>
-            <p className="help-paragraph">
-              Open source on{" "}
-              <a
-                href="https://github.com/loro-dev/loro-todo"
-                target="_blank"
-                rel="noreferrer"
-                className="help-inline-link help-github-link"
-              >
-                <LucideGithub className="help-github-icon" aria-hidden />
-                loro-dev/loro-todo
-              </a>
-              .
-            </p>
-          </section>
-        </div>
-      )}
-      {showHistory && (
-        <Suspense fallback={null}>
-          <div id="workspace-history">
-            <HistoryView doc={doc} />
-          </div>
-        </Suspense>
-      )}
+          </Suspense>
+        )}
 
-      <ul
-        className="todo-list"
-        ref={listRef}
-        onDragOver={handleListDragOver}
-        onDrop={handleListDrop}
-        style={{
-          height: positions.height,
-          touchAction: manualDrag ? "none" : undefined,
-        }}
-      >
-        {(() => {
-          const stableTodos = [...state.todos].sort((a, b) =>
-            a.$cid.localeCompare(b.$cid),
-          );
-          const indexByCid: Record<string, number> = {};
-          for (let i = 0; i < state.todos.length; i++) {
-            indexByCid[state.todos[i].$cid] = i;
-          }
-          return stableTodos.map((t) => {
-            const realIndex = indexByCid[t.$cid] ?? 0;
-            const isInsertTop =
-              insertIndex != null && insertIndex === realIndex;
-            const isInsertBottom =
-              insertIndex != null &&
-              insertIndex === state.todos.length &&
-              realIndex === state.todos.length - 1;
-            const baseY = positions.pos[t.$cid] ?? 0;
-            let translateY = baseY;
-            let transition = transformTransitionsReady
-              ? "transform 240ms ease"
-              : "transform 0ms linear";
-            let zIndex = 1;
-            const activeDragCid = manualDrag?.cid ?? dragCid;
-            const isManualActive = manualDrag?.cid === t.$cid;
-            const activeDragIndex =
-              activeDragCid != null ? (indexByCid[activeDragCid] ?? -1) : -1;
-            const activeDragHeight =
-              activeDragCid != null
-                ? (manualDrag?.height ??
-                  itemHeights[activeDragCid] ??
-                  DEFAULT_HEIGHT)
-                : DEFAULT_HEIGHT;
-            if (isManualActive && manualDrag) {
-              const rawY =
-                manualDrag.clientY - manualDrag.listTop - manualDrag.offsetY;
-              const minY = -manualDrag.height * 0.6;
-              const maxY = Math.max(
-                positions.height - manualDrag.height * 0.4,
-                minY,
-              );
-              const clampedY = Math.min(Math.max(rawY, minY), maxY);
-              translateY = clampedY;
-              transition = "transform 0ms linear";
-              zIndex = 5;
-            } else if (activeDragCid === t.$cid && dragCid === t.$cid) {
-              transition = "transform 0ms linear";
-              zIndex = 5;
+        <ul
+          className="todo-list"
+          ref={listRef}
+          onDragOver={handleListDragOver}
+          onDrop={handleListDrop}
+          style={{
+            height: positions.height,
+            touchAction: manualDrag ? "none" : undefined,
+          }}
+        >
+          {(() => {
+            const stableTodos = [...state.todos].sort((a, b) =>
+              a.$cid.localeCompare(b.$cid),
+            );
+            const indexByCid: Record<string, number> = {};
+            for (let i = 0; i < state.todos.length; i++) {
+              indexByCid[state.todos[i].$cid] = i;
             }
-            if (
-              activeDragCid &&
-              activeDragIndex !== -1 &&
-              insertIndex != null &&
-              t.$cid !== activeDragCid
-            ) {
-              if (insertIndex > activeDragIndex) {
-                if (
-                  realIndex > activeDragIndex &&
-                  realIndex <= insertIndex - 1
-                ) {
-                  translateY -= activeDragHeight + ITEM_GAP;
-                }
-              } else if (insertIndex <= activeDragIndex) {
-                if (realIndex >= insertIndex && realIndex < activeDragIndex) {
-                  translateY += activeDragHeight + ITEM_GAP;
+            return stableTodos.map((t) => {
+              const realIndex = indexByCid[t.$cid] ?? 0;
+              const isInsertTop =
+                insertIndex != null && insertIndex === realIndex;
+              const isInsertBottom =
+                insertIndex != null &&
+                insertIndex === state.todos.length &&
+                realIndex === state.todos.length - 1;
+              const baseY = positions.pos[t.$cid] ?? 0;
+              let translateY = baseY;
+              let transition = transformTransitionsReady
+                ? "transform 240ms ease"
+                : "transform 0ms linear";
+              let zIndex = 1;
+              const activeDragCid = manualDrag?.cid ?? dragCid;
+              const isManualActive = manualDrag?.cid === t.$cid;
+              const activeDragIndex =
+                activeDragCid != null ? (indexByCid[activeDragCid] ?? -1) : -1;
+              const activeDragHeight =
+                activeDragCid != null
+                  ? (manualDrag?.height ??
+                    itemHeights[activeDragCid] ??
+                    DEFAULT_HEIGHT)
+                  : DEFAULT_HEIGHT;
+              if (isManualActive && manualDrag) {
+                const rawY =
+                  manualDrag.clientY - manualDrag.listTop - manualDrag.offsetY;
+                const minY = -manualDrag.height * 0.6;
+                const maxY = Math.max(
+                  positions.height - manualDrag.height * 0.4,
+                  minY,
+                );
+                const clampedY = Math.min(Math.max(rawY, minY), maxY);
+                translateY = clampedY;
+                transition = "transform 0ms linear";
+                zIndex = 5;
+              } else if (activeDragCid === t.$cid && dragCid === t.$cid) {
+                transition = "transform 0ms linear";
+                zIndex = 5;
+              }
+              if (
+                activeDragCid &&
+                activeDragIndex !== -1 &&
+                insertIndex != null &&
+                t.$cid !== activeDragCid
+              ) {
+                if (insertIndex > activeDragIndex) {
+                  if (
+                    realIndex > activeDragIndex &&
+                    realIndex <= insertIndex - 1
+                  ) {
+                    translateY -= activeDragHeight + ITEM_GAP;
+                  }
+                } else if (insertIndex <= activeDragIndex) {
+                  if (realIndex >= insertIndex && realIndex < activeDragIndex) {
+                    translateY += activeDragHeight + ITEM_GAP;
+                  }
                 }
               }
-            }
-            return (
-              <TodoItemRow
-                key={t.$cid}
-                todo={t}
-                onTextChange={handleTextChange}
-                onDoneChange={handleDoneChange}
-                onDelete={handleDelete}
-                dragging={dragCid === t.$cid}
-                insertTop={!!isInsertTop}
-                insertBottom={!!isInsertBottom}
-                onManualPointerDown={handleManualPointerDown}
-                onManualPointerMove={handleManualPointerMove}
-                onManualPointerUp={handleManualPointerUp}
-                onManualPointerCancel={handleManualPointerCancel}
-                textSelected={selectedTextCid === t.$cid}
-                onTextSelect={handleTextSelect}
-                onTextDeselect={handleTextDeselect}
-                detached={detached}
-                onHeightChange={handleRowHeight}
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  transform: `translateY(${translateY}px)`,
-                  transition,
-                  willChange: "transform",
-                  zIndex,
-                  touchAction: manualDrag?.cid === t.$cid ? "none" : undefined,
-                }}
-              />
-            );
-          });
-        })()}
-      </ul>
+              return (
+                <TodoItemRow
+                  key={t.$cid}
+                  todo={t}
+                  onTextChange={handleTextChange}
+                  onDoneChange={handleDoneChange}
+                  onDelete={handleDelete}
+                  dragging={dragCid === t.$cid}
+                  insertTop={!!isInsertTop}
+                  insertBottom={!!isInsertBottom}
+                  onManualPointerDown={handleManualPointerDown}
+                  onManualPointerMove={handleManualPointerMove}
+                  onManualPointerUp={handleManualPointerUp}
+                  onManualPointerCancel={handleManualPointerCancel}
+                  detached={detached}
+                  onHeightChange={handleRowHeight}
+                  onRowRefChange={handleRowAttachment}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    transform: `translateY(${translateY}px)`,
+                    transition,
+                    willChange: "transform",
+                    zIndex,
+                    touchAction:
+                      manualDrag?.cid === t.$cid ? "none" : undefined,
+                  }}
+                />
+              );
+            });
+          })()}
+        </ul>
 
-      {toast && (
-        <div className="toast" role="status" aria-live="polite">
-          {toast}
-        </div>
-      )}
-    </div>
+        {toast && (
+          <div className="toast" role="status" aria-live="polite">
+            {toast}
+          </div>
+        )}
+      </div>
+    </SelectionProvider>
   );
 }
 
@@ -1824,25 +1946,82 @@ export function App() {
 
 type Todo = { $cid: string; text: string; status: TodoStatus };
 
-function TodoItemRow({
-  todo,
-  onTextChange,
-  onDoneChange,
-  onDelete,
-  dragging,
-  insertTop,
-  insertBottom,
-  onManualPointerDown,
-  onManualPointerMove,
-  onManualPointerUp,
-  onManualPointerCancel,
-  textSelected = false,
-  onTextSelect,
-  onTextDeselect,
+type NewTodoInputProps = {
+  inputRef: React.RefObject<HTMLInputElement>;
+  value: string;
+  detached: boolean;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+};
+
+function NewTodoInput({
+  inputRef,
+  value,
   detached,
-  onHeightChange,
-  style,
-}: {
+  onChange,
+  onSubmit,
+}: NewTodoInputProps) {
+  const { state, actions, ref } = useAppSelection();
+
+  const isSelected = state.type === "create";
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    if (detached) {
+      if (typeof document !== "undefined" && document.activeElement === input) {
+        input.blur();
+      }
+      return;
+    }
+    if (state.type === "create" && state.mode === "editing") {
+      if (typeof document !== "undefined" && document.activeElement !== input) {
+        input.focus();
+        input.select();
+      }
+    } else if (
+      typeof document !== "undefined" &&
+      document.activeElement === input
+    ) {
+      input.blur();
+    }
+  }, [state, detached, inputRef]);
+
+  const handleBlur = useCallback(() => {
+    const current = ref.current;
+    if (current.type === "create" && current.mode === "editing") {
+      actions.exitEditing();
+    }
+  }, [actions, ref]);
+
+  const className = `todo-input${isSelected ? " is-selected" : ""}`;
+
+  return (
+    <input
+      className={className}
+      ref={inputRef}
+      style={{ fontSize: 15 }}
+      placeholder="Add a todo..."
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      onFocus={() => actions.focusCreateEditing()}
+      onBlur={handleBlur}
+      onKeyDown={(event) => {
+        const nativeEvent = event.nativeEvent;
+        const isComposing = nativeEvent.isComposing;
+        const isIMEKeyCode =
+          (nativeEvent as unknown as { keyCode?: number })?.keyCode === 229;
+        if (event.key === "Enter" && !isComposing && !isIMEKeyCode) {
+          event.preventDefault();
+          onSubmit();
+        }
+      }}
+      disabled={detached}
+    />
+  );
+}
+
+type TodoItemRowProps = {
   todo: Todo;
   onTextChange: (cid: string, value: string) => void;
   onDoneChange: (cid: string, done: boolean) => void;
@@ -1866,21 +2045,42 @@ function TodoItemRow({
     cid: string,
     e: React.PointerEvent<HTMLLIElement>,
   ) => void;
-  textSelected?: boolean;
-  onTextSelect?: (cid: string) => void;
-  onTextDeselect?: (cid: string) => void;
   detached: boolean;
   onHeightChange?: (cid: string, height: number) => void;
+  onRowRefChange?: (cid: string, element: HTMLLIElement | null) => void;
   style?: React.CSSProperties;
-}) {
+};
+
+function TodoItemRow({
+  todo,
+  onTextChange,
+  onDoneChange,
+  onDelete,
+  dragging,
+  insertTop,
+  insertBottom,
+  onManualPointerDown,
+  onManualPointerMove,
+  onManualPointerUp,
+  onManualPointerCancel,
+  detached,
+  onHeightChange,
+  onRowRefChange,
+  style,
+}: TodoItemRowProps) {
   const inputRef = React.useRef<HTMLDivElement | null>(null);
   const rowRef = React.useRef<HTMLLIElement | null>(null);
   const touchSkipChangeRef = React.useRef<boolean>(false);
   const [localText, setLocalText] = React.useState<string>(todo.text);
   const sanitizeSingleLine = React.useCallback((s: string): string => {
-    // Replace line breaks with spaces; strip stray CR
     return s.replace(/\r/g, "").replace(/\n/g, " ");
   }, []);
+
+  const { state: selectionState, actions: selectionActions } =
+    useAppSelection();
+  const isSelected =
+    selectionState.type === "item" && selectionState.cid === todo.$cid;
+  const isEditing = isSelected && selectionState.mode === "editing";
 
   const handleEditorChange = React.useCallback(
     (next: string, shouldCommit: boolean) => {
@@ -1893,7 +2093,6 @@ function TodoItemRow({
     [onTextChange, sanitizeSingleLine, todo.$cid],
   );
 
-  // Keep local text in sync with CRDT text when not actively editing
   React.useEffect(() => {
     const el = inputRef.current;
     const isFocused =
@@ -1903,13 +2102,10 @@ function TodoItemRow({
     if (!isFocused) {
       setLocalText(sanitizeSingleLine(todo.text));
     }
-    // If focused, defer sync until editing finishes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sanitizeSingleLine, todo.text]);
 
   const isDone = todo.status === "done";
 
-  // Report row height for transform-based layout; observe changes
   React.useLayoutEffect(() => {
     const el = rowRef.current;
     if (!el || !onHeightChange) return;
@@ -1923,17 +2119,65 @@ function TodoItemRow({
     return () => {
       if (ro) ro.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localText, isDone]);
+  }, [onHeightChange, todo.$cid, localText, isDone]);
+
+  React.useEffect(() => {
+    onRowRefChange?.(todo.$cid, rowRef.current);
+    return () => onRowRefChange?.(todo.$cid, null);
+  }, [onRowRefChange, todo.$cid]);
+
+  const focusItemPreview = React.useCallback(() => {
+    selectionActions.focusItemPreview(todo.$cid);
+  }, [selectionActions, todo.$cid]);
+
+  const focusItemEditing = React.useCallback(() => {
+    selectionActions.focusItemEditing(todo.$cid);
+    const el = inputRef.current;
+    if (el && typeof document !== "undefined") {
+      window.requestAnimationFrame(() => {
+        const text = el.textContent ?? "";
+        const length = text.length;
+        const sel = window.getSelection();
+        if (!sel) return;
+        const range = document.createRange();
+        if (el.firstChild) {
+          range.setStart(
+            el.firstChild,
+            Math.min(length, el.firstChild.textContent?.length ?? 0),
+          );
+          range.setEnd(
+            el.firstChild,
+            Math.min(length, el.firstChild.textContent?.length ?? 0),
+          );
+        } else {
+          range.setStart(el, 0);
+          range.setEnd(el, 0);
+        }
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
+    }
+  }, [selectionActions, todo.$cid]);
+
+  const className = `todo-item card${isDone ? " done" : ""}${dragging ? " dragging" : ""}${
+    insertTop ? " insert-top" : ""
+  }${insertBottom ? " insert-bottom" : ""}${isSelected ? " selected" : ""}${
+    isEditing ? " editing" : ""
+  }`;
+
   return (
     <li
-      className={`todo-item card${isDone ? " done" : ""}${dragging ? " dragging" : ""}${insertTop ? " insert-top" : ""}${insertBottom ? " insert-bottom" : ""}${textSelected ? " selected" : ""}`}
+      className={className}
       ref={rowRef}
       data-cid={todo.$cid}
       style={style}
       onPointerDown={(e) => {
-        if ((e.target as HTMLElement | null)?.closest(".todo-checkbox")) {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest(".todo-checkbox")) {
           return;
+        }
+        if (!detached && !target?.closest(".todo-text")) {
+          focusItemPreview();
         }
         onManualPointerDown?.(todo.$cid, e);
       }}
@@ -1996,13 +2240,12 @@ function TodoItemRow({
         ref={inputRef}
         value={localText}
         detached={detached}
-        textSelected={textSelected}
+        selectionActive={isSelected}
+        selectionEditing={isEditing}
         sanitize={sanitizeSingleLine}
         onChange={handleEditorChange}
-        onSelect={onTextSelect ? () => onTextSelect(todo.$cid) : undefined}
-        onDeselect={
-          onTextDeselect ? () => onTextDeselect(todo.$cid) : undefined
-        }
+        onRequestEditing={focusItemEditing}
+        onRequestPreview={focusItemPreview}
       />
       <button
         className="delete-btn"

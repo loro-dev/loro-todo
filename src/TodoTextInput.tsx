@@ -7,11 +7,12 @@ export type TodoTextInputChange = (next: string, shouldCommit: boolean) => void;
 export type TodoTextInputProps = {
     value: string;
     detached: boolean;
-    textSelected: boolean;
+    selectionActive: boolean;
+    selectionEditing: boolean;
     sanitize: (input: string) => string;
     onChange: TodoTextInputChange;
-    onSelect?: () => void;
-    onDeselect?: () => void;
+    onRequestEditing: () => void;
+    onRequestPreview: () => void;
 };
 
 function mergeRefs<T>(
@@ -31,7 +32,16 @@ function mergeRefs<T>(
 
 export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps>(
     function TodoTextInput(
-        { value, detached, textSelected, sanitize, onChange, onSelect, onDeselect },
+        {
+            value,
+            detached,
+            selectionActive,
+            selectionEditing,
+            sanitize,
+            onChange,
+            onRequestEditing,
+            onRequestPreview,
+        },
         forwardedRef,
     ) {
         const elementRef = React.useRef<HTMLDivElement | null>(null);
@@ -74,9 +84,10 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
 
         const allowEditing = React.useMemo(() => {
             if (detached) return false;
-            if (!isCoarsePointer) return true;
-            return textSelected;
-        }, [detached, isCoarsePointer, textSelected]);
+            return selectionEditing;
+        }, [detached, selectionEditing]);
+
+        const lastPointerTypeRef = React.useRef<string | null>(null);
 
         const pendingSelectionRef = React.useRef<number | null>(null);
 
@@ -260,10 +271,59 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
             [allowEditing, applySelectionOffsets, getSelectionOffsets, handleSanitizedChange, sanitize],
         );
 
+        React.useEffect(() => {
+            const el = elementRef.current;
+            if (!el) return;
+            if (!allowEditing) {
+                if (
+                    typeof document !== "undefined" &&
+                    document.activeElement === el
+                ) {
+                    el.blur();
+                }
+                return;
+            }
+            if (typeof document !== "undefined" && document.activeElement !== el) {
+                el.focus();
+                captureSelection();
+            }
+        }, [allowEditing, captureSelection]);
+
+        React.useEffect(() => {
+            if (!selectionEditing) return;
+            if (typeof document === "undefined") return;
+            const el = elementRef.current;
+            if (!el) return;
+            const length = el.textContent?.length ?? 0;
+            const range = document.createRange();
+            const selection = window.getSelection();
+            if (!selection) return;
+            if (el.firstChild && el.firstChild.nodeType === Node.TEXT_NODE) {
+                const textLength = (el.firstChild.textContent ?? "").length;
+                const caret = Math.min(length, textLength);
+                range.setStart(el.firstChild, caret);
+                range.setEnd(el.firstChild, caret);
+            } else {
+                range.selectNodeContents(el);
+                range.collapse(false);
+            }
+            selection.removeAllRanges();
+            selection.addRange(range);
+            selectionRef.current = { start: length, end: length };
+        }, [selectionEditing, value]);
+
+        const className = React.useMemo(() => {
+            let base = "todo-text";
+            if (!isCoarsePointer) base += " todo-text--fine";
+            if (selectionEditing) base += " todo-text--editing";
+            else if (selectionActive) base += " todo-text--preview";
+            return base;
+        }, [isCoarsePointer, selectionActive, selectionEditing]);
+
         return (
             <div
                 ref={mergeRefs(elementRef, forwardedRef)}
-                className="todo-text"
+                className={className}
                 contentEditable={allowEditing}
                 suppressContentEditableWarning
                 role="textbox"
@@ -271,7 +331,13 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                 aria-readonly={!allowEditing}
                 spellCheck={false}
                 onPointerDown={(event) => {
+                    lastPointerTypeRef.current = event.pointerType || null;
                     if (allowEditing) return;
+                    if (event.pointerType === "mouse") {
+                        onRequestEditing();
+                        pendingSelectionRef.current = null;
+                        return;
+                    }
                     if (event.pointerType === "touch" || event.pointerType === "pen") {
                         if (event.cancelable) event.preventDefault();
                         elementRef.current?.blur();
@@ -284,10 +350,19 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                     if (!allowEditing) {
                         if (pendingSelectionRef.current === event.pointerId) {
                             pendingSelectionRef.current = null;
-                            if (event.pointerType === "touch" && event.cancelable) {
+                            const pointerType = event.pointerType || lastPointerTypeRef.current;
+                            if ((pointerType === "touch" || pointerType === "pen") && event.cancelable) {
                                 event.preventDefault();
                             }
-                            onSelect?.();
+                            if (pointerType === "touch" || pointerType === "pen") {
+                                if (!selectionActive) {
+                                    onRequestPreview();
+                                } else {
+                                    onRequestEditing();
+                                }
+                            } else {
+                                onRequestEditing();
+                            }
                         }
                         return;
                     }
@@ -300,16 +375,16 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                 }}
                 onFocus={() => {
                     if (!allowEditing) {
+                        onRequestEditing();
                         elementRef.current?.blur();
                         return;
                     }
-                    onSelect?.();
                     captureSelection();
                 }}
                 onInput={handleInput}
                 onBlur={() => {
                     selectionRef.current = null;
-                    onDeselect?.();
+                    onRequestPreview();
                 }}
                 onKeyDown={(event) => {
                     if (!isComposingRef.current && event.key === "Enter") {
