@@ -299,10 +299,10 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
             const selection = window.getSelection();
             if (!selection) return;
             if (el.firstChild && el.firstChild.nodeType === Node.TEXT_NODE) {
-                const textLength = (el.firstChild.textContent ?? "").length;
-                const caret = Math.min(length, textLength);
-                range.setStart(el.firstChild, caret);
-                range.setEnd(el.firstChild, caret);
+                const textNode = el.firstChild as Text;
+                const caret = Math.min(length, (textNode.textContent ?? "").length);
+                range.setStart(textNode, caret);
+                range.setEnd(textNode, caret);
             } else {
                 range.selectNodeContents(el);
                 range.collapse(false);
@@ -310,7 +310,7 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
             selection.removeAllRanges();
             selection.addRange(range);
             selectionRef.current = { start: length, end: length };
-        }, [selectionEditing, value]);
+        }, [selectionEditing]);
 
         const className = React.useMemo(() => {
             let base = "todo-text";
