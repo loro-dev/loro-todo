@@ -59,6 +59,19 @@ export function registerKeyboardHandlers(bindings: KeyboardBindings): () => void
             (!isMacLike && event.ctrlKey && event.shiftKey && key === "z") ||
             (!isMacLike && event.ctrlKey && !event.shiftKey && key === "y");
 
+        const isEditingSelection =
+            (state.type === "item" && state.mode === "editing") ||
+            (state.type === "create" && state.mode === "editing");
+
+        if (isEditingSelection) {
+            if (isPrimaryModifier && !event.shiftKey && !event.altKey && key === "z") {
+                return;
+            }
+            if (isRedoShortcut) {
+                return;
+            }
+        }
+
         if (isPrimaryModifier && !event.shiftKey && !event.altKey && key === "z") {
             scrollPreventDefault(event);
             undo();
