@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import type { ClientStatusValue } from "loro-websocket";
-import { getCollaboratorColorByIndex } from "./collaboratorColors";
+import { getCollaboratorColorForId } from "./collaboratorColors";
 
 export type NetworkStatusIndicatorProps = {
     connectionStatus: ClientStatusValue;
@@ -16,6 +16,8 @@ function capitalize(value: string): string {
     return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+const MAX_PEER_DOTS = 8;
+
 export function NetworkStatusIndicator({
     connectionStatus,
     presenceCount,
@@ -24,8 +26,33 @@ export function NetworkStatusIndicator({
     onRequestToast,
     selfPeerId,
 }: NetworkStatusIndicatorProps) {
-    const hasSelf = presenceCount > presencePeers.length;
-    const totalCount = hasSelf ? presencePeers.length + 1 : presencePeers.length;
+    const includesSelf = presenceCount > presencePeers.length;
+    const totalCount = includesSelf ? presencePeers.length + 1 : presencePeers.length;
+
+    const dotPeerIds = useMemo(() => {
+        const ids = includesSelf
+            ? [selfPeerId, ...presencePeers]
+            : presencePeers;
+        return ids.slice(0, MAX_PEER_DOTS);
+    }, [includesSelf, presencePeers, selfPeerId]);
+
+    const dotElements = useMemo(() => {
+        if (dotPeerIds.length === 0) {
+            return null;
+        }
+        return dotPeerIds.map((peerId, index) => (
+            <span
+                key={peerId}
+                aria-hidden
+                style={{
+                    marginLeft: index === 0 ? 0 : -4,
+                    color: getCollaboratorColorForId(peerId),
+                }}
+            >
+                ●
+            </span>
+        ));
+    }, [dotPeerIds]);
     const statusDescription = useMemo(() => {
         switch (connectionStatus) {
             case "connected":
@@ -105,52 +132,23 @@ export function NetworkStatusIndicator({
                         marginLeft: 8,
                     }}
                 >
-                    {(() => {
-                        const dotPeers = (hasSelf
-                            ? [selfPeerId, ...presencePeers]
-                            : presencePeers
-                        ).slice(0, 8);
-                        const dots = dotPeers.map((peerId, index) => (
-                            <span
-                                key={peerId ?? index}
-                                aria-hidden
-                                style={{
-                                    marginLeft: index === 0 ? 0 : -4,
-                                    color:
-                                        peerId != null
-                                            ? getCollaboratorColorByIndex(index)
-                                            : getCollaboratorColorByIndex(index),
-                                }}
-                            >
-                                ●
-                            </span>
-                        ));
-                        const safeDots =
-                            dots.length > 0 ? (
-                                dots
-                            ) : (
-                                <span aria-hidden style={{ color: "#29c329" }}>
-                                    ●
-                                </span>
-                            );
-                        return (
-                            <>
-                                {safeDots}
-                                {totalCount > 0 && (
-                                    <span
-                                        style={{
-                                            marginLeft: 6,
-                                            fontSize: "0.8rem",
-                                            lineHeight: 1,
-                                            color: "var(--muted)",
-                                        }}
-                                    >
-                                        {totalCount}
-                                    </span>
-                                )}
-                            </>
-                        );
-                    })()}
+                    {dotElements ?? (
+                        <span aria-hidden style={{ color: "#29c329" }}>
+                            ●
+                        </span>
+                    )}
+                    {totalCount > 0 && (
+                        <span
+                            style={{
+                                marginLeft: 6,
+                                fontSize: "0.8rem",
+                                lineHeight: 1,
+                                color: "var(--muted)",
+                            }}
+                        >
+                            {totalCount}
+                        </span>
+                    )}
                 </span>
             ) : (
                 <span

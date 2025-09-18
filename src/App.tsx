@@ -41,10 +41,7 @@ import {
   createSelectionSyncSession,
   type SelectionSyncSession,
 } from "./state/selectionSync";
-import {
-  getCollaboratorColorByIndex,
-  getCollaboratorColorForId,
-} from "./collaboratorColors";
+import { getCollaboratorColorForId } from "./collaboratorColors";
 
 const HistoryView = React.lazy(() => import("./HistoryView"));
 
@@ -612,13 +609,14 @@ function WorkspaceSession({
     [state.todos],
   );
 
-  const remotePeerColors = useMemo(() => {
-    const map: Record<string, string> = {};
-    presencePeers.forEach((peerId, index) => {
-      map[peerId] = getCollaboratorColorByIndex(index + 1);
-    });
-    return map;
-  }, [presencePeers]);
+  const remotePeerColors = useMemo<Record<string, string>>(
+    () =>
+      presencePeers.reduce<Record<string, string>>((acc, peerId) => {
+        acc[peerId] = getCollaboratorColorForId(peerId);
+        return acc;
+      }, {}),
+    [presencePeers],
+  );
 
   // Layout: transform-translate positioning for smooth transitions
   const [itemHeights, setItemHeights] = useState<Record<string, number>>({});
