@@ -7,11 +7,12 @@ export type TodoTextInputChange = (next: string, shouldCommit: boolean) => void;
 export type TodoTextInputProps = {
     value: string;
     detached: boolean;
-    textSelected: boolean;
+    selectionActive: boolean;
+    selectionEditing: boolean;
     sanitize: (input: string) => string;
     onChange: TodoTextInputChange;
-    onSelect?: () => void;
-    onDeselect?: () => void;
+    onRequestEditing: () => void;
+    onRequestPreview: () => void;
 };
 
 function mergeRefs<T>(
@@ -31,11 +32,21 @@ function mergeRefs<T>(
 
 export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps>(
     function TodoTextInput(
-        { value, detached, textSelected, sanitize, onChange, onSelect, onDeselect },
+        {
+            value,
+            detached,
+            selectionActive,
+            selectionEditing,
+            sanitize,
+            onChange,
+            onRequestEditing,
+            onRequestPreview,
+        },
         forwardedRef,
     ) {
         const elementRef = React.useRef<HTMLDivElement | null>(null);
         const selectionRef = React.useRef<SelectionRange | null>(null);
+        // During IME composition we avoid mutating content/selection so the browser can manage the in-flight text.
         const isComposingRef = React.useRef(false);
         const [isCoarsePointer, setIsCoarsePointer] = React.useState<boolean>(() => {
             if (typeof window === "undefined") return false;
@@ -73,9 +84,10 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
 
         const allowEditing = React.useMemo(() => {
             if (detached) return false;
-            if (!isCoarsePointer) return true;
-            return textSelected;
-        }, [detached, isCoarsePointer, textSelected]);
+            return selectionEditing;
+        }, [detached, selectionEditing]);
+
+        const lastPointerTypeRef = React.useRef<string | null>(null);
 
         const pendingSelectionRef = React.useRef<number | null>(null);
 
@@ -130,12 +142,15 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
         );
 
         const captureSelection = React.useCallback(() => {
+            // TODO: REVIEW [skips selection capture while IME composition is active]
+            if (isComposingRef.current) return;
             const offsets = getSelectionOffsets();
             if (offsets) selectionRef.current = offsets;
         }, [getSelectionOffsets]);
 
         const syncContentFromValue = React.useCallback(
             (nextValue: string) => {
+                if (isComposingRef.current) return;
                 const el = elementRef.current;
                 if (!el) return;
                 const sanitized = sanitize(nextValue);
@@ -146,9 +161,16 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
             [sanitize],
         );
 
+        // The browser dispatches an `input` right after `compositionend`; skip it because we already commit there.
+        const skipNextInputRef = React.useRef(false);
+
+        const handleCompositionStart = React.useCallback(() => {
+            isComposingRef.current = true;
+        }, []);
+
         React.useLayoutEffect(() => {
             syncContentFromValue(value);
-            if (selectionRef.current) {
+            if (!isComposingRef.current && selectionRef.current) {
                 const { start, end } = selectionRef.current;
                 applySelectionOffsets(start, end);
                 selectionRef.current = null;
@@ -170,9 +192,18 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                     el.textContent = value;
                     return;
                 }
-                const before = getSelectionOffsets();
+                if (skipNextInputRef.current) {
+                    skipNextInputRef.current = false;
+                    return;
+                }
+                if (isComposingRef.current) {
+                    // IME will supply the finalized text via `compositionend`; avoid interfering mid-stream.
+                    return;
+                }
+                // With the IME idle, sanitize and commit immediate edits while preserving the caret.
                 const raw = event.currentTarget.textContent ?? "";
                 const sanitized = sanitize(raw);
+                const before = getSelectionOffsets();
                 if (sanitized !== raw) {
                     event.currentTarget.textContent = sanitized;
                     const caret = before ? Math.min(before.start, sanitized.length) : sanitized.length;
@@ -181,7 +212,7 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                 } else if (before) {
                     selectionRef.current = before;
                 }
-                handleSanitizedChange(sanitized, !isComposingRef.current);
+                handleSanitizedChange(sanitized, true);
             },
             [
                 allowEditing,
@@ -225,6 +256,8 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
             (event) => {
                 if (!allowEditing) return;
                 isComposingRef.current = false;
+                skipNextInputRef.current = true;
+                // Commit the IME result exactly once: sanitize, restore selection, and propagate upstream.
                 const sanitized = sanitize(event.currentTarget.textContent ?? "");
                 if ((event.currentTarget.textContent ?? "") !== sanitized) {
                     event.currentTarget.textContent = sanitized;
@@ -238,10 +271,59 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
             [allowEditing, applySelectionOffsets, getSelectionOffsets, handleSanitizedChange, sanitize],
         );
 
+        React.useEffect(() => {
+            const el = elementRef.current;
+            if (!el) return;
+            if (!allowEditing) {
+                if (
+                    typeof document !== "undefined" &&
+                    document.activeElement === el
+                ) {
+                    el.blur();
+                }
+                return;
+            }
+            if (typeof document !== "undefined" && document.activeElement !== el) {
+                el.focus();
+                captureSelection();
+            }
+        }, [allowEditing, captureSelection]);
+
+        React.useEffect(() => {
+            if (!selectionEditing) return;
+            if (typeof document === "undefined") return;
+            const el = elementRef.current;
+            if (!el) return;
+            const length = el.textContent?.length ?? 0;
+            const range = document.createRange();
+            const selection = window.getSelection();
+            if (!selection) return;
+            if (el.firstChild && el.firstChild.nodeType === Node.TEXT_NODE) {
+                const textLength = (el.firstChild.textContent ?? "").length;
+                const caret = Math.min(length, textLength);
+                range.setStart(el.firstChild, caret);
+                range.setEnd(el.firstChild, caret);
+            } else {
+                range.selectNodeContents(el);
+                range.collapse(false);
+            }
+            selection.removeAllRanges();
+            selection.addRange(range);
+            selectionRef.current = { start: length, end: length };
+        }, [selectionEditing, value]);
+
+        const className = React.useMemo(() => {
+            let base = "todo-text";
+            if (!isCoarsePointer) base += " todo-text--fine";
+            if (selectionEditing) base += " todo-text--editing";
+            else if (selectionActive) base += " todo-text--preview";
+            return base;
+        }, [isCoarsePointer, selectionActive, selectionEditing]);
+
         return (
             <div
                 ref={mergeRefs(elementRef, forwardedRef)}
-                className="todo-text"
+                className={className}
                 contentEditable={allowEditing}
                 suppressContentEditableWarning
                 role="textbox"
@@ -249,7 +331,13 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                 aria-readonly={!allowEditing}
                 spellCheck={false}
                 onPointerDown={(event) => {
+                    lastPointerTypeRef.current = event.pointerType || null;
                     if (allowEditing) return;
+                    if (event.pointerType === "mouse") {
+                        onRequestEditing();
+                        pendingSelectionRef.current = null;
+                        return;
+                    }
                     if (event.pointerType === "touch" || event.pointerType === "pen") {
                         if (event.cancelable) event.preventDefault();
                         elementRef.current?.blur();
@@ -262,10 +350,19 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                     if (!allowEditing) {
                         if (pendingSelectionRef.current === event.pointerId) {
                             pendingSelectionRef.current = null;
-                            if (event.pointerType === "touch" && event.cancelable) {
+                            const pointerType = event.pointerType || lastPointerTypeRef.current;
+                            if ((pointerType === "touch" || pointerType === "pen") && event.cancelable) {
                                 event.preventDefault();
                             }
-                            onSelect?.();
+                            if (pointerType === "touch" || pointerType === "pen") {
+                                if (!selectionActive) {
+                                    onRequestPreview();
+                                } else {
+                                    onRequestEditing();
+                                }
+                            } else {
+                                onRequestEditing();
+                            }
                         }
                         return;
                     }
@@ -278,25 +375,23 @@ export const TodoTextInput = React.forwardRef<HTMLDivElement, TodoTextInputProps
                 }}
                 onFocus={() => {
                     if (!allowEditing) {
+                        onRequestEditing();
                         elementRef.current?.blur();
                         return;
                     }
-                    onSelect?.();
                     captureSelection();
                 }}
                 onInput={handleInput}
                 onBlur={() => {
                     selectionRef.current = null;
-                    onDeselect?.();
+                    onRequestPreview();
                 }}
                 onKeyDown={(event) => {
                     if (!isComposingRef.current && event.key === "Enter") {
                         event.preventDefault();
                     }
                 }}
-                onCompositionStart={() => {
-                    isComposingRef.current = true;
-                }}
+                onCompositionStart={handleCompositionStart}
                 onCompositionEnd={handleCompositionEnd}
                 onPaste={handlePaste}
                 onBeforeInput={(event) => {

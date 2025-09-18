@@ -172,9 +172,22 @@ body {
         background-color 160ms ease;
 }
 
+.todo-input.is-selected {
+    border-color: color-mix(in oklab, var(--brand) 28%, var(--border));
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--brand) 18%, transparent);
+}
+
 .todo-input:focus {
     border-color: color-mix(in oklab, var(--brand) 28%, var(--border));
     outline: none;
+}
+
+.todo-text {
+    cursor: inherit;
+}
+
+.todo-text--fine {
+    cursor: text;
 }
 .todo-input::placeholder {
     color: color-mix(in oklab, var(--muted) 80%, #ffffff);
@@ -493,18 +506,18 @@ body {
     list-style: none;
     padding: 0;
     margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    position: relative; /* container for absolutely positioned items */
 }
 
 .todo-item {
-    position: relative;
+    position: absolute; /* positioned via transform translateY */
     display: flex; /* children vertically center, even with multi-line */
     gap: 8px;
     align-items: center;
     padding: 6px 12px 6px 12px;
     transition: transform 240ms ease;
+    will-change: transform;
+    -webkit-touch-callout: none;
 }
 
 .todo-item.selected {
@@ -524,6 +537,16 @@ body {
     cursor: grabbing;
 }
 
+body.is-dragging {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+body.is-dragging .todo-item,
+body.is-dragging .drag-handle {
+    cursor: grabbing;
+}
+
 .todo-item:not(.selected) .todo-text {
     -webkit-user-select: none;
     user-select: none;
@@ -531,7 +554,24 @@ body {
     caret-color: transparent;
 }
 
-/* Insertion preview line */
+.todo-collab-dots {
+    position: absolute;
+    top: 50%;
+    right: -18px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    pointer-events: none;
+}
+
+.todo-collab-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px color-mix(in oklab, #000 12%, transparent);
+}
+
 .drag-handle {
     position: absolute;
     left: -34px; /* keep ~6px gap with larger size */
@@ -552,7 +592,9 @@ body {
     cursor: grab;
     -webkit-user-select: none;
     user-select: none;
-    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+    touch-action: manipulation;
 }
 .drag-handle:active {
     cursor: grabbing;
@@ -569,8 +611,6 @@ body {
         padding-left: 18px;
     }
 }
-
-/* Deprecated drag-over visual removed in favor of insert line */
 
 .todo-checkbox {
     /* Use content-box so border doesn't shrink content size */

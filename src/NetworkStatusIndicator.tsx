@@ -1,16 +1,6 @@
 import React, { useMemo } from "react";
 import type { ClientStatusValue } from "loro-websocket";
-
-const DOT_COLORS = [
-    "var(--brand)",
-    "color-mix(in oklab, var(--brand) 80%, #ffffff)",
-    "color-mix(in oklab, var(--brand) 65%, #ffffff)",
-    "color-mix(in oklab, var(--brand) 50%, #ffffff)",
-    "var(--crimson)",
-    "var(--secondary)",
-    "var(--burnt)",
-    "var(--golden)",
-];
+import { getCollaboratorColorForId } from "./collaboratorColors";
 
 export type NetworkStatusIndicatorProps = {
     connectionStatus: ClientStatusValue;
@@ -18,6 +8,7 @@ export type NetworkStatusIndicatorProps = {
     presencePeers: string[];
     latencyMs: number | null;
     onRequestToast: (message: string | null) => void;
+    selfPeerId: string;
 };
 
 function capitalize(value: string): string {
@@ -25,25 +16,58 @@ function capitalize(value: string): string {
     return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+const MAX_PEER_DOTS = 8;
+
 export function NetworkStatusIndicator({
     connectionStatus,
     presenceCount,
     presencePeers,
     latencyMs,
     onRequestToast,
+    selfPeerId,
 }: NetworkStatusIndicatorProps) {
+    const includesSelf = presenceCount > presencePeers.length;
+    const totalCount = includesSelf ? presencePeers.length + 1 : presencePeers.length;
+
+    const dotPeerIds = useMemo(() => {
+        const ids = includesSelf
+            ? [selfPeerId, ...presencePeers]
+            : presencePeers;
+        return ids.slice(0, MAX_PEER_DOTS);
+    }, [includesSelf, presencePeers, selfPeerId]);
+
+    const dotElements = useMemo(() => {
+        if (dotPeerIds.length === 0) {
+            return null;
+        }
+        return dotPeerIds.map((peerId, index) => (
+            <span
+                key={peerId}
+                aria-hidden
+                style={{
+                    marginLeft: index === 0 ? 0 : -4,
+                    color: getCollaboratorColorForId(peerId),
+                }}
+            >
+                ●
+            </span>
+        ));
+    }, [dotPeerIds]);
     const statusDescription = useMemo(() => {
         switch (connectionStatus) {
             case "connected":
-                return presenceCount > 1
-                    ? `connected with ${presenceCount - 1} collaborators`
-                    : "connected";
+                if (includesSelf && totalCount <= 1) {
+                    return "connected";
+                }
+                return `connected · ${totalCount} person${
+                    totalCount === 1 ? "" : "s"
+                }`;
             case "connecting":
                 return "connecting…";
             default:
                 return "disconnected";
         }
-    }, [connectionStatus, presenceCount]);
+    }, [connectionStatus, includesSelf, totalCount]);
 
     const statusLabel = useMemo(() => capitalize(statusDescription), [statusDescription]);
 
@@ -108,45 +132,23 @@ export function NetworkStatusIndicator({
                         marginLeft: 8,
                     }}
                 >
-                    {(() => {
-                        const dots = presencePeers.slice(0, 8).map((_, index) => (
-                            <span
-                                key={index}
-                                aria-hidden
-                                style={{
-                                    marginLeft: index === 0 ? 0 : -4,
-                                    color: DOT_COLORS[index % DOT_COLORS.length],
-                                }}
-                            >
-                                ●
-                            </span>
-                        ));
-                        const safeDots =
-                            dots.length > 0 ? (
-                                dots
-                            ) : (
-                                <span aria-hidden style={{ color: "#29c329" }}>
-                                    ●
-                                </span>
-                            );
-                        return (
-                            <>
-                                {safeDots}
-                                {presenceCount !== 1 && (
-                                    <span
-                                        style={{
-                                            marginLeft: 6,
-                                            fontSize: "0.8rem",
-                                            lineHeight: 1,
-                                            color: "var(--muted)",
-                                        }}
-                                    >
-                                        {presenceCount}
-                                    </span>
-                                )}
-                            </>
-                        );
-                    })()}
+                    {dotElements ?? (
+                        <span aria-hidden style={{ color: "#29c329" }}>
+                            ●
+                        </span>
+                    )}
+                    {(!includesSelf || totalCount > 1) && (
+                        <span
+                            style={{
+                                marginLeft: 6,
+                                fontSize: "0.8rem",
+                                lineHeight: 1,
+                                color: "var(--muted)",
+                            }}
+                        >
+                            {totalCount}
+                        </span>
+                    )}
                 </span>
             ) : (
                 <span
