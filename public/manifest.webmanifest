@@ -1,6 +1,6 @@
 {
-  "name": "Loro Todo Example",
-  "short_name": "Loro Todo Example",
+  "name": "Loro Todo",
+  "short_name": "Loro Todo",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
