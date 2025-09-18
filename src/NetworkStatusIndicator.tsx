@@ -56,7 +56,7 @@ export function NetworkStatusIndicator({
     const statusDescription = useMemo(() => {
         switch (connectionStatus) {
             case "connected":
-                if (totalCount <= 0) {
+                if (includesSelf && totalCount <= 1) {
                     return "connected";
                 }
                 return `connected · ${totalCount} person${
@@ -67,7 +67,7 @@ export function NetworkStatusIndicator({
             default:
                 return "disconnected";
         }
-    }, [connectionStatus, totalCount]);
+    }, [connectionStatus, includesSelf, totalCount]);
 
     const statusLabel = useMemo(() => capitalize(statusDescription), [statusDescription]);
 
@@ -137,7 +137,7 @@ export function NetworkStatusIndicator({
                             ●
                         </span>
                     )}
-                    {totalCount > 0 && (
+                    {(!includesSelf || totalCount > 1) && (
                         <span
                             style={{
                                 marginLeft: 6,
