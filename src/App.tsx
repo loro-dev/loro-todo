@@ -22,6 +22,7 @@ import {
   saveWorkspaceSnapshot,
   setupWorkspacePersistence,
   snapshotToArrayBuffer,
+  ensurePersistentStorage,
   updateWorkspaceName,
   type WorkspaceRecord,
 } from "./state/storage";
@@ -586,6 +587,7 @@ function WorkspaceSession({
   const [shareUrl, setShareUrl] = useState<string>("");
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | undefined>(undefined);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>([]);
   const [workspaceTitle, setWorkspaceTitle] = useState<string>("Untitled List");
   const wsDebounceRef = useRef<number | undefined>(undefined);
@@ -601,6 +603,11 @@ function WorkspaceSession({
   const skipSnapshotOnUnloadRef = useRef<boolean>(false);
   const newTodoInputRef = useRef<HTMLInputElement | null>(null);
   const itemRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+  const persistentRequestRef = useRef<{
+    granted: boolean;
+    promise: Promise<boolean> | null;
+    unsupportedNotified: boolean;
+  }>({ granted: false, promise: null, unsupportedNotified: false });
 
   const [transformTransitionsReady, setTransformTransitionsReady] =
     useState<boolean>(false);
@@ -761,6 +768,67 @@ function WorkspaceSession({
     [setToast],
   );
 
+  const dismissStorageWarning = useCallback(() => {
+    setStorageWarning(null);
+  }, []);
+
+  const requestPersistentStorage = useCallback((): Promise<boolean> => {
+    const state = persistentRequestRef.current;
+    if (state.granted) return Promise.resolve(true);
+    if (state.promise) return state.promise;
+
+    const showWarning = (message: string) => {
+      state.unsupportedNotified = true;
+      setStorageWarning(message);
+    };
+
+    const attempt = ensurePersistentStorage()
+      .then(({ granted, supported }) => {
+        if (granted) {
+          state.granted = true;
+          state.unsupportedNotified = false;
+          if (storageWarning) setStorageWarning(null);
+          // eslint-disable-next-line no-console
+          console.info("Persistent storage granted for this origin.");
+          return true;
+        }
+        if (!supported && !state.unsupportedNotified) {
+          const reason =
+            "Persistent storage API unsupported or insecure context (granted=false, supported=false).";
+          showWarning(
+            "Your browser doesn't support persistent storage here. Export backups regularly to avoid data loss.",
+          );
+          // eslint-disable-next-line no-console
+          console.warn("Persistent storage unsupported: falling back to best-effort storage.", {
+            reason,
+          });
+        }
+        if (supported && !granted) {
+          const reason =
+            "persist() returned false; the browser declined elevation (likely due to heuristics or low engagement).";
+          // eslint-disable-next-line no-console
+          console.warn("Persistent storage request was denied.", { reason });
+        }
+        return false;
+      })
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn("Persistent storage request failed:", error, {
+          reason: "persist() threw or rejected",
+        });
+        showWarning(
+          "Persistent storage request failed. The browser may clear this workspace—export a backup to protect it.",
+        );
+        return false;
+      })
+      .finally(() => {
+        state.promise = null;
+      });
+
+    state.promise = attempt;
+    return attempt;
+  }, [ensurePersistentStorage, storageWarning]);
+
   useEffect(() => {
     setConnectionStatus("connecting");
     setLatencyMs(null);
@@ -920,19 +988,21 @@ function WorkspaceSession({
   // Persist the latest snapshot immediately (used before programmatic navigations)
   const persistSnapshotNow = useCallback(async (): Promise<void> => {
     if (!workspaceHex) return;
+    void requestPersistentStorage();
     try {
       await saveWorkspaceSnapshot(doc, workspaceHex);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn("Forced snapshot save failed:", error);
     }
-  }, [doc, workspaceHex]);
+  }, [doc, requestPersistentStorage, workspaceHex]);
 
   const handleExportWorkspace = useCallback(() => {
     if (!workspaceHex) {
       handleStatusToast("Workspace not ready");
       return;
     }
+    void requestPersistentStorage();
     try {
       const snapshot = doc.export({ mode: "snapshot" });
       const blob = new Blob([snapshotToArrayBuffer(snapshot)], {
@@ -958,18 +1028,26 @@ function WorkspaceSession({
     } finally {
       setShowWsMenu(false);
     }
-  }, [doc, handleStatusToast, setShowWsMenu, workspaceFileName, workspaceHex]);
+  }, [
+    doc,
+    handleStatusToast,
+    requestPersistentStorage,
+    setShowWsMenu,
+    workspaceFileName,
+    workspaceHex,
+  ]);
 
   const handleRequestImport = useCallback(() => {
     if (!workspaceHex) {
       handleStatusToast("Workspace not ready");
       return;
     }
+    void requestPersistentStorage();
     setShowWsMenu(false);
     window.setTimeout(() => {
       wsImportInputRef.current?.click();
     }, 0);
-  }, [handleStatusToast, setShowWsMenu, workspaceHex]);
+  }, [handleStatusToast, requestPersistentStorage, setShowWsMenu, workspaceHex]);
 
   const handleImportFileChange = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1090,6 +1168,7 @@ function WorkspaceSession({
 
   function addTodo(text: string) {
     if (!text.trim()) return;
+    void requestPersistentStorage();
     void setState((s) => {
       // Insert new todos at the top of the list
       s.todos.splice(0, 0, { text, status: "todo" });
@@ -1549,6 +1628,23 @@ function WorkspaceSession({
           )}
           {/* Room ID inline display removed; shown via selector options */}
         </header>
+        {storageWarning && (
+          <div
+            className="storage-warning"
+            role="alert"
+            aria-live="assertive"
+          >
+            <span className="storage-warning-message">{storageWarning}</span>
+            <button
+              type="button"
+              className="storage-warning-dismiss"
+              onClick={dismissStorageWarning}
+              aria-label="Dismiss storage warning"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         <div className="new-todo">
           <NewTodoInput

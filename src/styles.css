@@ -140,6 +140,42 @@ body {
     line-height: 1.5;
 }
 
+.storage-warning {
+    margin: 12px 0;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid color-mix(in oklab, var(--border) 65%, var(--brand));
+    background: color-mix(in oklab, var(--card) 92%, #fff1eb);
+    color: color-mix(in oklab, var(--brand) 45%, var(--text));
+    font-size: 0.88rem;
+    line-height: 1.5;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.storage-warning-message {
+    flex: 1;
+}
+
+.storage-warning-dismiss {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: color-mix(in oklab, var(--brand) 60%, var(--text));
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 140ms ease;
+}
+
+.storage-warning-dismiss:hover,
+.storage-warning-dismiss:focus-visible {
+    background: color-mix(in oklab, var(--bg) 92%, var(--brand) 8%);
+    outline: none;
+}
+
 .subtitle {
     display: none;
 }

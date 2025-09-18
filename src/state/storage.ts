@@ -5,6 +5,37 @@ const DOC_DB_NAME = "loro-example-docs";
 const DOC_DB_VERSION = 2;
 const DOC_STORE = "docs";
 const KEY_STORE = "keys";
+const CRITICAL_BUCKET_NAME = "critical";
+
+type StorageBucketDurability = "relaxed" | "strict";
+
+type StorageBucket = {
+    indexedDB: IDBFactory;
+};
+
+type StorageBucketsNavigator = Navigator & {
+    storageBuckets?: {
+        open: (
+            name: string,
+            options?: {
+                durability?: StorageBucketDurability;
+                persisted?: boolean;
+            },
+        ) => Promise<StorageBucket>;
+    };
+};
+
+let persistentStorageGranted: boolean | undefined;
+let persistentStorageSupported: boolean | undefined;
+let persistentStorageRequest: Promise<boolean> | null = null;
+
+let criticalBucketFactoryPromise: Promise<IDBFactory | null> | null = null;
+let bucketFallbackLogged = false;
+
+export type PersistentStorageResult = {
+    granted: boolean;
+    supported: boolean;
+};
 
 export type DocRecord = { id: string; snapshot: ArrayBuffer };
 export type WorkspaceRecord = {
@@ -26,12 +57,151 @@ export function snapshotToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
     return copy.buffer;
 }
 
-export function openDocDb(): Promise<IDBDatabase> {
+export async function ensurePersistentStorage(): Promise<PersistentStorageResult> {
+    if (persistentStorageGranted) {
+        return {
+            granted: true,
+            supported: persistentStorageSupported !== false,
+        };
+    }
+    if (persistentStorageSupported === false) {
+        return { granted: false, supported: false };
+    }
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+        persistentStorageSupported = false;
+        return { granted: false, supported: false };
+    }
+    if (typeof navigator === "undefined") {
+        return { granted: false, supported: false };
+    }
+    const storageManager = navigator.storage;
+    if (!storageManager) {
+        persistentStorageSupported = false;
+        persistentStorageGranted = false;
+        return { granted: false, supported: false };
+    }
+
+    const supportsPersisted = typeof storageManager.persisted === "function";
+    const supportsPersist = typeof storageManager.persist === "function";
+
+    if (!supportsPersist && !supportsPersisted) {
+        persistentStorageSupported = false;
+        persistentStorageGranted = false;
+        return { granted: false, supported: false };
+    }
+
+    try {
+        if (supportsPersisted) {
+            const persisted = await storageManager.persisted();
+            if (persisted) {
+                persistentStorageGranted = true;
+                persistentStorageSupported = true;
+                return { granted: true, supported: true };
+            }
+        }
+    } catch {
+        // ignore persisted() failures and fall through to persist()
+    }
+
+    if (!supportsPersist) {
+        persistentStorageSupported = false;
+        persistentStorageGranted = false;
+        return { granted: false, supported: false };
+    }
+
+    persistentStorageSupported = true;
+
+    if (!persistentStorageRequest) {
+        persistentStorageRequest = (async () => {
+            try {
+                const granted = await storageManager.persist();
+                if (granted) {
+                    persistentStorageGranted = true;
+                    return true;
+                }
+                if (supportsPersisted) {
+                    const persistedAfter = await storageManager.persisted();
+                    if (persistedAfter) {
+                        persistentStorageGranted = true;
+                        return true;
+                    }
+                }
+            } catch {
+                // fall through to mark as not granted
+            }
+            persistentStorageGranted = false;
+            return false;
+        })().finally(() => {
+            persistentStorageRequest = null;
+        });
+    }
+
+    const granted = await persistentStorageRequest;
+    return { granted, supported: true };
+}
+
+async function getCriticalBucketFactory(): Promise<IDBFactory | null> {
+    if (criticalBucketFactoryPromise) return criticalBucketFactoryPromise;
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+        if (!bucketFallbackLogged) {
+            // eslint-disable-next-line no-console
+            console.info(
+                "Storage Buckets require a secure context; falling back to default IndexedDB.",
+            );
+            bucketFallbackLogged = true;
+        }
+        return null;
+    }
+    if (typeof navigator === "undefined") return null;
+    const nav = navigator as StorageBucketsNavigator;
+    const manager = nav.storageBuckets;
+    if (!manager?.open) {
+        if (!bucketFallbackLogged) {
+            // eslint-disable-next-line no-console
+            console.info(
+                "Storage Buckets API unavailable; using default IndexedDB.",
+            );
+            bucketFallbackLogged = true;
+        }
+        return null;
+    }
+    criticalBucketFactoryPromise = (async () => {
+        try {
+            const bucket = await manager.open(CRITICAL_BUCKET_NAME, {
+                durability: "strict",
+                persisted: true,
+            });
+            return bucket.indexedDB;
+        } catch (error) {
+            if (!bucketFallbackLogged) {
+                // eslint-disable-next-line no-console
+                console.warn(
+                    "Storage Buckets open failed; falling back to default IndexedDB.",
+                    error,
+                );
+                bucketFallbackLogged = true;
+            }
+            return null;
+        }
+    })();
+    const factory = await criticalBucketFactoryPromise;
+    if (!factory) {
+        // Allow retrial later if the first attempt failed (e.g., unsupported)
+        criticalBucketFactoryPromise = null;
+    }
+    return factory;
+}
+
+function getGlobalIndexedDbFactory(): IDBFactory {
+    if (typeof indexedDB === "undefined") {
+        throw new Error("IndexedDB is not available in this environment");
+    }
+    return indexedDB;
+}
+
+function openWithFactory(factory: IDBFactory): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-        const request: IDBOpenDBRequest = indexedDB.open(
-            DOC_DB_NAME,
-            DOC_DB_VERSION,
-        );
+        const request = factory.open(DOC_DB_NAME, DOC_DB_VERSION);
         request.onupgradeneeded = () => {
             const db = request.result;
             if (!db.objectStoreNames.contains(DOC_STORE)) {
@@ -46,6 +216,28 @@ export function openDocDb(): Promise<IDBDatabase> {
             reject(request.error ?? new Error("IDB open error")),
         );
     });
+}
+
+export async function openDocDb(): Promise<IDBDatabase> {
+    const globalFactory = getGlobalIndexedDbFactory();
+    const bucketFactory = await getCriticalBucketFactory();
+    const factory = bucketFactory ?? globalFactory;
+    try {
+        return await openWithFactory(factory);
+    } catch (error) {
+        if (factory !== globalFactory) {
+            if (!bucketFallbackLogged) {
+                // eslint-disable-next-line no-console
+                console.warn(
+                    "Storage Bucket IndexedDB open failed; retrying with default factory.",
+                    error,
+                );
+                bucketFallbackLogged = true;
+            }
+            return openWithFactory(globalFactory);
+        }
+        throw error;
+    }
 }
 
 export function putDocSnapshot(
