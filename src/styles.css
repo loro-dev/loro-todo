@@ -554,6 +554,24 @@ body.is-dragging .drag-handle {
     caret-color: transparent;
 }
 
+.todo-collab-dots {
+    position: absolute;
+    top: 50%;
+    right: -18px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    pointer-events: none;
+}
+
+.todo-collab-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px color-mix(in oklab, #000 12%, transparent);
+}
+
 .drag-handle {
     position: absolute;
     left: -34px; /* keep ~6px gap with larger size */

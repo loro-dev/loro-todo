@@ -25,14 +25,26 @@ import {
   updateWorkspaceName,
   type WorkspaceRecord,
 } from "./state/storage";
-import type { ClientStatusValue } from "loro-websocket";
+import type { ClientStatusValue, LoroWebsocketClient } from "loro-websocket";
 import type { WorkspaceConnectionKeys } from "./state/publicSync";
 import { useLongPressDrag } from "./useLongPressDrag";
 import { NetworkStatusIndicator } from "./NetworkStatusIndicator";
 import { createPresenceScheduler, type IdleWindow } from "./state/presence";
 import { TodoTextInput } from "./TodoTextInput";
-import { SelectionProvider, useAppSelection } from "./selection";
+import {
+  SelectionProvider,
+  useAppSelection,
+  type RemoteSelectionMap,
+} from "./selection";
 import { registerKeyboardHandlers } from "./keyboard";
+import {
+  createSelectionSyncSession,
+  type SelectionSyncSession,
+} from "./state/selectionSync";
+import {
+  getCollaboratorColorByIndex,
+  getCollaboratorColorForId,
+} from "./collaboratorColors";
 
 const HistoryView = React.lazy(() => import("./HistoryView"));
 
@@ -456,6 +468,90 @@ function KeyboardShortcutsBridge({
   return null;
 }
 
+type SelectionSyncBridgeProps = {
+  client: LoroWebsocketClient | null;
+  docPeerId: string;
+};
+
+function SelectionSyncBridge({
+  client,
+  docPeerId,
+}: SelectionSyncBridgeProps): null {
+  const { state, setRemotePeers } = useAppSelection();
+  const sessionRef = useRef<SelectionSyncSession | null>(null);
+  const selectionRef = useRef(state);
+  selectionRef.current = state;
+
+  useEffect(() => {
+    const session = sessionRef.current;
+    if (!session) return;
+    if (state.type === "item") {
+      session.updateLocalSelection({ cid: state.cid, mode: state.mode });
+    } else {
+      session.updateLocalSelection(null);
+    }
+  }, [state]);
+
+  useEffect(() => {
+    let disposed = false;
+    sessionRef.current = null;
+    setRemotePeers({});
+
+    if (!client) {
+      return () => {
+        disposed = true;
+      };
+    }
+
+    const handleRemoteSelections = (peers: RemoteSelectionMap) => {
+      if (!disposed) {
+        setRemotePeers(peers);
+      }
+    };
+
+    const start = async () => {
+      try {
+        const session = await createSelectionSyncSession({
+          client,
+          docPeerId,
+          handlers: { onRemoteSelections: handleRemoteSelections },
+        });
+        if (disposed) {
+          if (session) void session.cleanup();
+          return;
+        }
+        sessionRef.current = session;
+        if (session) {
+          const current = selectionRef.current;
+          if (current.type === "item") {
+            session.updateLocalSelection({ cid: current.cid, mode: current.mode });
+          } else {
+            session.updateLocalSelection(null);
+          }
+        }
+      } catch {
+        if (!disposed) {
+          setRemotePeers({});
+        }
+      }
+    };
+
+    void start();
+
+    return () => {
+      disposed = true;
+      setRemotePeers({});
+      const existing = sessionRef.current;
+      sessionRef.current = null;
+      if (existing) {
+        void existing.cleanup();
+      }
+    };
+  }, [client, docPeerId, setRemotePeers]);
+
+  return null;
+}
+
 type WorkspaceSessionProps = {
   workspace: WorkspaceKeys;
   fallbackActive: boolean;
@@ -486,9 +582,10 @@ function WorkspaceSession({
   const [connectionStatus, setConnectionStatus] =
     useState<ClientStatusValue>("connecting");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
-  const [presenceCount, setPresenceCount] = useState<number>(1);
+  const [presenceCount, setPresenceCount] = useState<number>(0);
   const [workspaceHex, setWorkspaceHex] = useState<string>(workspace.publicHex);
   const [presencePeers, setPresencePeers] = useState<string[]>([]);
+  const [syncClient, setSyncClient] = useState<LoroWebsocketClient | null>(null);
   const [shareUrl, setShareUrl] = useState<string>("");
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | undefined>(undefined);
@@ -514,6 +611,14 @@ function WorkspaceSession({
     () => state.todos.some((t) => t.status === "done"),
     [state.todos],
   );
+
+  const remotePeerColors = useMemo(() => {
+    const map: Record<string, string> = {};
+    presencePeers.forEach((peerId, index) => {
+      map[peerId] = getCollaboratorColorByIndex(index + 1);
+    });
+    return map;
+  }, [presencePeers]);
 
   // Layout: transform-translate positioning for smooth transitions
   const [itemHeights, setItemHeights] = useState<Record<string, number>>({});
@@ -662,6 +767,7 @@ function WorkspaceSession({
     setConnectionStatus("connecting");
     setLatencyMs(null);
     setOnline(false);
+    setSyncClient(null);
     const idleWindow = window as IdleWindow;
     let mounted = true;
     let sessionCleanup: void | (() => void | Promise<void>);
@@ -691,17 +797,22 @@ function WorkspaceSession({
         });
         if (!mounted) {
           if (session?.cleanup) void session.cleanup();
+          setSyncClient(null);
           return;
         }
         sessionCleanup = session.cleanup;
         const client = session.client;
+        setSyncClient(client ?? null);
         if (client) {
           presenceScheduler.schedule(client);
         }
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error("Failed to start public sync:", error);
-        if (mounted) setOnline(false);
+        if (mounted) {
+          setOnline(false);
+          setSyncClient(null);
+        }
       }
     };
 
@@ -728,6 +839,7 @@ function WorkspaceSession({
       }
       if (startTimeout !== undefined) window.clearTimeout(startTimeout);
       if (sessionCleanup) void sessionCleanup();
+      setSyncClient(null);
     };
     // doc/workspace stay stable within a session (component remounts on change)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1234,6 +1346,7 @@ function WorkspaceSession({
       itemOrder={itemOrder}
       resolveItemElement={resolveItemElement}
       resolveCreateInput={resolveCreateInput}
+      remotePeerColors={remotePeerColors}
     >
       <KeyboardShortcutsBridge
         toggleItem={toggleTodo}
@@ -1243,6 +1356,7 @@ function WorkspaceSession({
         moveItemUp={moveTodoUp}
         moveItemDown={moveTodoDown}
       />
+      <SelectionSyncBridge client={syncClient} docPeerId={doc.peerIdStr} />
       <div className="app">
         <header className="app-header">
           <div className="workspace-title" ref={wsTitleRef}>
@@ -1427,6 +1541,7 @@ function WorkspaceSession({
             presencePeers={presencePeers}
             latencyMs={latencyMs}
             onRequestToast={handleStatusToast}
+            selfPeerId={doc.peerIdStr}
           />
           {fallbackActive && (
             <div className="fallback-banner" role="alert" aria-live="assertive">
@@ -2064,11 +2179,40 @@ function TodoItemRow({
     return s.replace(/\r/g, "").replace(/\n/g, " ");
   }, []);
 
-  const { state: selectionState, actions: selectionActions } =
+  const {
+    state: selectionState,
+    actions: selectionActions,
+    remotePeers,
+    remotePeerColors,
+  } =
     useAppSelection();
   const isSelected =
     selectionState.type === "item" && selectionState.cid === todo.$cid;
   const isEditing = isSelected && selectionState.mode === "editing";
+
+  const remoteSelectors = React.useMemo(
+    () =>
+      Object.entries(remotePeers).filter(([, selection]) => {
+        return selection.cid === todo.$cid;
+      }),
+    [remotePeers, todo.$cid],
+  );
+
+  // TODO: REVIEW [confirm collaborator dot placement beside the checkbox feels aligned in dense lists]
+  const remoteSelectorDots = React.useMemo(
+    () =>
+      remoteSelectors.map(([peerId]) => {
+        const color = remotePeerColors[peerId] ?? getCollaboratorColorForId(peerId);
+        return (
+          <span
+            key={peerId}
+            className="todo-collab-dot"
+            style={{ backgroundColor: color }}
+          />
+        );
+      }),
+    [remoteSelectors, remotePeerColors],
+  );
 
   const handleEditorChange = React.useCallback(
     (next: string, shouldCommit: boolean) => {
@@ -2194,6 +2338,11 @@ function TodoItemRow({
       >
         ☰
       </button>
+      {remoteSelectorDots.length > 0 && (
+        <span className="todo-collab-dots" aria-hidden>
+          {remoteSelectorDots}
+        </span>
+      )}
       <div
         aria-checked={isDone}
         aria-label={isDone ? "Mark as todo" : "Mark as done"}

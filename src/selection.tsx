@@ -15,6 +15,19 @@ export type SelectionState =
   | SelectionStateCreate
   | SelectionStateItem;
 
+export type RemotePeerSelection = {
+  cid: string;
+  mode: SelectionMode;
+  updatedAt: number;
+};
+
+export type RemoteSelectionMap = Record<string, RemotePeerSelection>;
+
+const EMPTY_REMOTE_COLORS: Record<string, string> = Object.freeze({}) as Record<
+  string,
+  string
+>;
+
 type SelectionAction =
   | { type: "clear" }
   | { type: "focus-create"; mode: SelectionMode }
@@ -243,6 +256,9 @@ export type SelectionContextValue = {
   state: SelectionState;
   ref: React.MutableRefObject<SelectionState>;
   actions: SelectionActions;
+  remotePeers: RemoteSelectionMap;
+  remotePeerColors: Record<string, string>;
+  setRemotePeers(next: RemoteSelectionMap): void;
 };
 
 export type SelectionActions = {
@@ -263,6 +279,7 @@ type SelectionProviderProps = {
   itemOrder: readonly string[];
   resolveItemElement?: (cid: string) => HTMLElement | null;
   resolveCreateInput?: () => HTMLElement | null;
+  remotePeerColors?: Record<string, string>;
   children: React.ReactNode;
 };
 
@@ -274,11 +291,21 @@ export function SelectionProvider({
   itemOrder,
   resolveItemElement,
   resolveCreateInput,
+  remotePeerColors,
   children,
 }: SelectionProviderProps): React.ReactElement {
   const [state, dispatch] = React.useReducer(selectionReducer, INITIAL_STATE);
   const stateRef = React.useRef<SelectionState>(state);
   stateRef.current = state;
+
+  const [remotePeers, setRemotePeers] = React.useState<RemoteSelectionMap>({});
+  const setRemotePeersStable = React.useCallback(
+    (next: RemoteSelectionMap) => {
+      setRemotePeers(next);
+    },
+    [],
+  );
+  const remotePeerColorsValue = remotePeerColors ?? EMPTY_REMOTE_COLORS;
 
   const itemOrderRef = React.useRef<readonly string[]>(itemOrder);
   const resolveItemElementRef = React.useRef(resolveItemElement);
@@ -376,8 +403,21 @@ export function SelectionProvider({
   }, [itemOrder]);
 
   const value = React.useMemo<SelectionContextValue>(
-    () => ({ state, ref: stateRef, actions }),
-    [state, actions],
+    () => ({
+      state,
+      ref: stateRef,
+      actions,
+      remotePeers,
+      remotePeerColors: remotePeerColorsValue,
+      setRemotePeers: setRemotePeersStable,
+    }),
+    [
+      state,
+      actions,
+      remotePeers,
+      remotePeerColorsValue,
+      setRemotePeersStable,
+    ],
   );
 
   return (

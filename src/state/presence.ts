@@ -1,5 +1,11 @@
+import type { Value } from "loro-crdt";
 import type { LoroWebsocketClient } from "loro-websocket";
 import { ROOM_ID } from "./constants";
+import {
+    clearSharedEphemeralStore,
+    publishSharedEphemeralStore,
+    type SharedEphemeralStore,
+} from "./sharedEphemeral";
 
 const PRESENCE_TTL_MS = 45000; // expire stale peers after 45s
 const HEARTBEAT_MS = 15000; // heartbeat every 15s to reduce chatter
@@ -43,11 +49,46 @@ export async function createPresenceSession(
         const { EphemeralStore } = crdtModule;
         const { createLoroEphemeralAdaptorFromStore } = websocketModule;
 
-        const store = new EphemeralStore<Record<string, number>>(PRESENCE_TTL_MS);
+        const store = new EphemeralStore<Record<string, Value>>(PRESENCE_TTL_MS);
         const adaptor = createLoroEphemeralAdaptorFromStore(store);
 
+        const dependentCleanupListeners = new Set<() => void | Promise<void>>();
+
+        const shared: SharedEphemeralStore = {
+            store,
+            addDisposeListener: (listener) => {
+                dependentCleanupListeners.add(listener);
+                return () => {
+                    dependentCleanupListeners.delete(listener);
+                };
+            },
+        };
+
+        publishSharedEphemeralStore(options.client, shared);
+
+        const runDependentCleanup = async () => {
+            if (dependentCleanupListeners.size === 0) {
+                return;
+            }
+            const tasks: Promise<unknown>[] = [];
+            for (const listener of dependentCleanupListeners) {
+                try {
+                    const result = listener();
+                    if (result && typeof (result as Promise<unknown>).then === "function") {
+                        tasks.push(result as Promise<unknown>);
+                    }
+                } catch {
+                    /* noop */
+                }
+            }
+            dependentCleanupListeners.clear();
+            if (tasks.length > 0) {
+                await Promise.allSettled(tasks);
+            }
+        };
+
         const computePeers = () => {
-            const entries = store.getAllStates() as Record<string, unknown>;
+            const entries = store.getAllStates() as Record<string, Value>;
             const now = Date.now();
             const peers = Object.entries(entries)
                 .filter(
@@ -58,8 +99,11 @@ export async function createPresenceSession(
                 )
                 .map(([key]) => key.slice(2))
                 .sort();
-            options.setPresencePeers(peers);
-            options.setPresenceCount(peers.length > 0 ? peers.length : 1);
+            const collaborators = peers.filter((peer) => peer !== options.docPeerId);
+            const hasSelf = peers.length !== collaborators.length;
+            const totalParticipants = collaborators.length + (hasSelf ? 1 : 0);
+            options.setPresencePeers(collaborators);
+            options.setPresenceCount(totalParticipants > 0 ? totalParticipants : 1);
         };
         const unsubscribe = store.subscribe(() => computePeers());
         computePeers();
@@ -73,6 +117,7 @@ export async function createPresenceSession(
             try {
                 unsubscribe();
             } catch {}
+            await runDependentCleanup();
             try {
                 store.delete(myKey);
             } catch {}
@@ -82,6 +127,8 @@ export async function createPresenceSession(
             try {
                 adaptor.destroy();
             } catch {}
+            clearSharedEphemeralStore(options.client);
+            options.setPresenceCount(0);
         };
 
         try {
@@ -90,7 +137,7 @@ export async function createPresenceSession(
             window.clearInterval(heartbeat);
             await localCleanup();
             options.setPresencePeers([]);
-            options.setPresenceCount(1);
+            options.setPresenceCount(0);
             return null;
         }
 
@@ -119,13 +166,14 @@ export async function createPresenceSession(
             }
             await localCleanup();
             options.setPresencePeers([]);
-            options.setPresenceCount(1);
+            options.setPresenceCount(0);
         };
     } catch (error) {
         // eslint-disable-next-line no-console
         console.warn("Presence setup failed:", error);
+        clearSharedEphemeralStore(options.client);
         options.setPresencePeers([]);
-        options.setPresenceCount(1);
+        options.setPresenceCount(0);
         return null;
     }
 }
@@ -139,7 +187,7 @@ export function createPresenceScheduler(
 
     const resetState = () => {
         options.setPresencePeers([]);
-        options.setPresenceCount(1);
+        options.setPresenceCount(0);
     };
 
     const cancelSchedule = () => {

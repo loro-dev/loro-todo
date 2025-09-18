@@ -1,16 +1,6 @@
 import React, { useMemo } from "react";
 import type { ClientStatusValue } from "loro-websocket";
-
-const DOT_COLORS = [
-    "var(--brand)",
-    "color-mix(in oklab, var(--brand) 80%, #ffffff)",
-    "color-mix(in oklab, var(--brand) 65%, #ffffff)",
-    "color-mix(in oklab, var(--brand) 50%, #ffffff)",
-    "var(--crimson)",
-    "var(--secondary)",
-    "var(--burnt)",
-    "var(--golden)",
-];
+import { getCollaboratorColorByIndex } from "./collaboratorColors";
 
 export type NetworkStatusIndicatorProps = {
     connectionStatus: ClientStatusValue;
@@ -18,6 +8,7 @@ export type NetworkStatusIndicatorProps = {
     presencePeers: string[];
     latencyMs: number | null;
     onRequestToast: (message: string | null) => void;
+    selfPeerId: string;
 };
 
 function capitalize(value: string): string {
@@ -31,19 +22,25 @@ export function NetworkStatusIndicator({
     presencePeers,
     latencyMs,
     onRequestToast,
+    selfPeerId,
 }: NetworkStatusIndicatorProps) {
+    const hasSelf = presenceCount > presencePeers.length;
+    const totalCount = hasSelf ? presencePeers.length + 1 : presencePeers.length;
     const statusDescription = useMemo(() => {
         switch (connectionStatus) {
             case "connected":
-                return presenceCount > 1
-                    ? `connected with ${presenceCount - 1} collaborators`
-                    : "connected";
+                if (totalCount <= 0) {
+                    return "connected";
+                }
+                return `connected · ${totalCount} person${
+                    totalCount === 1 ? "" : "s"
+                }`;
             case "connecting":
                 return "connecting…";
             default:
                 return "disconnected";
         }
-    }, [connectionStatus, presenceCount]);
+    }, [connectionStatus, totalCount]);
 
     const statusLabel = useMemo(() => capitalize(statusDescription), [statusDescription]);
 
@@ -109,13 +106,20 @@ export function NetworkStatusIndicator({
                     }}
                 >
                     {(() => {
-                        const dots = presencePeers.slice(0, 8).map((_, index) => (
+                        const dotPeers = (hasSelf
+                            ? [selfPeerId, ...presencePeers]
+                            : presencePeers
+                        ).slice(0, 8);
+                        const dots = dotPeers.map((peerId, index) => (
                             <span
-                                key={index}
+                                key={peerId ?? index}
                                 aria-hidden
                                 style={{
                                     marginLeft: index === 0 ? 0 : -4,
-                                    color: DOT_COLORS[index % DOT_COLORS.length],
+                                    color:
+                                        peerId != null
+                                            ? getCollaboratorColorByIndex(index)
+                                            : getCollaboratorColorByIndex(index),
                                 }}
                             >
                                 ●
@@ -132,7 +136,7 @@ export function NetworkStatusIndicator({
                         return (
                             <>
                                 {safeDots}
-                                {presenceCount !== 1 && (
+                                {totalCount > 0 && (
                                     <span
                                         style={{
                                             marginLeft: 6,
@@ -141,7 +145,7 @@ export function NetworkStatusIndicator({
                                             color: "var(--muted)",
                                         }}
                                     >
-                                        {presenceCount}
+                                        {totalCount}
                                     </span>
                                 )}
                             </>
