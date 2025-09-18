@@ -17,12 +17,44 @@ import {
   getWorkspace,
   listWorkspaces,
   openDocDb,
+  saveWorkspaceSnapshot,
   type WorkspaceRecord,
   upsertWorkspace,
 } from "./storage";
 import { ROOM_ID, SYNC_BASE } from "./constants";
 
 export { SYNC_BASE, ROOM_ID } from "./constants";
+
+let welcomeSnapshotPromise: Promise<Uint8Array> | null = null;
+
+async function fetchWelcomeSnapshot(): Promise<Uint8Array | null> {
+  if (typeof fetch !== "function") {
+    return null;
+  }
+  if (!welcomeSnapshotPromise) {
+    welcomeSnapshotPromise = (async () => {
+      const response = await fetch("/Welcome_Todos.loro");
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch onboarding snapshot: ${response.status} ${response.statusText}`,
+        );
+      }
+      const buffer = await response.arrayBuffer();
+      return new Uint8Array(buffer);
+    })();
+    welcomeSnapshotPromise = welcomeSnapshotPromise.catch((error) => {
+      welcomeSnapshotPromise = null;
+      throw error;
+    });
+  }
+  try {
+    return await welcomeSnapshotPromise;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn("Load welcome snapshot failed:", error);
+    return null;
+  }
+}
 
 export type PublicSyncHandlers = {
   setDetached: (detached: boolean) => void;
@@ -45,10 +77,15 @@ export type WorkspaceConnectionKeys = {
   privateHex: string;
 };
 
+export type PublicSyncOptions = {
+  bootstrapWelcomeDoc?: boolean;
+};
+
 export async function setupPublicSync(
   doc: LoroDoc,
   keys: WorkspaceConnectionKeys,
   handlers: PublicSyncHandlers,
+  options: PublicSyncOptions = {},
 ): Promise<PublicSyncSession> {
   const adaptor = createLoroAdaptorFromDoc(doc);
   let roomCleanup: (() => Promise<void> | void) | null = null;
@@ -71,6 +108,8 @@ export async function setupPublicSync(
   let shareUrl = subtleAvailable
     ? `${window.location.origin}/${currentPublicHex}#${currentPrivateHex}`
     : fallbackKeys.share;
+  let shouldBootstrapWelcomeDoc = options.bootstrapWelcomeDoc === true;
+  let hasLocalSnapshot = false;
 
   handlers.setWorkspaceHex(currentPublicHex);
   handlers.setShareUrl(shareUrl);
@@ -104,11 +143,27 @@ export async function setupPublicSync(
       const snapshot = await getDocSnapshot(db, currentPublicHex);
       if (snapshot) {
         doc.import(new Uint8Array(snapshot));
+        hasLocalSnapshot = true;
       }
       db.close();
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn("IndexedDB load failed:", error);
+    }
+
+    if (shouldBootstrapWelcomeDoc && !hasLocalSnapshot) {
+      const welcomeBytes = await fetchWelcomeSnapshot();
+      if (welcomeBytes) {
+        try {
+          doc.import(welcomeBytes);
+          await saveWorkspaceSnapshot(doc, currentPublicHex);
+          hasLocalSnapshot = true;
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.warn("Apply welcome snapshot failed:", error);
+        }
+      }
+      shouldBootstrapWelcomeDoc = false;
     }
 
     if (!subtleAvailable) {

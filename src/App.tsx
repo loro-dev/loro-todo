@@ -50,6 +50,8 @@ type PublicSyncModule = typeof import("./state/publicSync");
 type CryptoModule = typeof import("./state/crypto");
 type WorkspaceKeys = WorkspaceConnectionKeys;
 
+let bootstrapNextWorkspace = false;
+
 let publicSyncModulePromise: Promise<PublicSyncModule> | null = null;
 function loadPublicSyncModule(): Promise<PublicSyncModule> {
   if (!publicSyncModulePromise) {
@@ -65,16 +67,33 @@ function loadCryptoModule(): Promise<CryptoModule> {
   }
   return cryptoModulePromise;
 }
+function navigateToWorkspaceRoute(
+  publicHex: string,
+  privateHex: string,
+  options: { replace?: boolean } = {},
+): void {
+  const normalizedPublic = normalizeHex(publicHex);
+  const normalizedPrivate = normalizeHex(privateHex);
+  const target = `/${normalizedPublic}#${normalizedPrivate}`;
+  const method = options.replace ? "replaceState" : "pushState";
+  window.history[method](null, "", target);
+  const evt =
+    typeof PopStateEvent === "function"
+      ? new PopStateEvent("popstate")
+      : new Event("popstate");
+  window.dispatchEvent(evt);
+}
+
 async function switchToWorkspace(id: string): Promise<void> {
   const record = await fetchWorkspaceById(id);
   if (!record) return;
-  window.location.assign(`/${record.id}#${record.privateHex}`);
+  navigateToWorkspaceRoute(record.id, record.privateHex);
 }
 
 async function createNewWorkspace(): Promise<void> {
   const { generatePairAndUrl } = await loadCryptoModule();
   const generated = await generatePairAndUrl();
-  window.location.assign(`/${generated.publicHex}#${generated.privateHex}`);
+  navigateToWorkspaceRoute(generated.publicHex, generated.privateHex);
 }
 
 function normalizeHex(value: string): string {
@@ -553,11 +572,13 @@ function SelectionSyncBridge({
 type WorkspaceSessionProps = {
   workspace: WorkspaceKeys;
   fallbackActive: boolean;
+  bootstrapWelcomeDoc: boolean;
 };
 
 function WorkspaceSession({
   workspace,
   fallbackActive,
+  bootstrapWelcomeDoc,
 }: WorkspaceSessionProps) {
   const doc = useMemo(() => createConfiguredDoc(), []);
   (window as unknown as { doc?: unknown }).doc = doc;
@@ -860,6 +881,8 @@ function WorkspaceSession({
           setWorkspaces,
           setConnectionStatus,
           setLatency: setLatencyMs,
+        }, {
+          bootstrapWelcomeDoc,
         });
         if (!mounted) {
           if (session?.cleanup) void session.cleanup();
@@ -907,9 +930,7 @@ function WorkspaceSession({
       if (sessionCleanup) void sessionCleanup();
       setSyncClient(null);
     };
-    // doc/workspace stay stable within a session (component remounts on change)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, workspace]);
+  }, [bootstrapWelcomeDoc, doc, workspace]);
 
   // Debounced persistence to IndexedDB keyed by workspace
   useEffect(() => {
@@ -974,8 +995,9 @@ function WorkspaceSession({
       setWorkspaces(all);
       const next = all.find((w) => w.id !== workspaceHex) ?? null;
       if (next) {
-        window.location.assign(`/${next.id}#${next.privateHex}`);
+        navigateToWorkspaceRoute(next.id, next.privateHex, { replace: true });
       } else {
+        bootstrapNextWorkspace = true;
         await createNewWorkspace();
       }
     } catch (error) {
@@ -1521,9 +1543,34 @@ function WorkspaceSession({
                       if (workspaceHex) {
                         await persistSnapshotNow();
                       }
+                      let handled = false;
+                      try {
+                        const parsed = new URL(url, window.location.href);
+                        if (parsed.origin === window.location.origin) {
+                          const pathParts = parsed.pathname
+                            .split("/")
+                            .filter(Boolean);
+                          const targetPublic =
+                            pathParts[pathParts.length - 1] ?? "";
+                          const targetPrivate = parsed.hash.startsWith("#")
+                            ? parsed.hash.slice(1)
+                            : "";
+                          if (targetPublic && targetPrivate) {
+                            navigateToWorkspaceRoute(
+                              targetPublic,
+                              targetPrivate,
+                            );
+                            handled = true;
+                          }
+                        }
+                      } catch {
+                        handled = false;
+                      }
+                      if (!handled) {
+                        window.location.assign(url);
+                      }
                     } finally {
                       setShowWsMenu(false);
-                      window.location.assign(url);
                     }
                   };
                   return (
@@ -1978,6 +2025,8 @@ function WorkspaceSession({
 export function App() {
   const [workspace, setWorkspace] = useState<WorkspaceKeys | null>(null);
   const [fallbackActive, setFallbackActive] = useState<boolean>(false);
+  const [bootstrapWelcomeDoc, setBootstrapWelcomeDoc] =
+    useState<boolean>(false);
   const ensureCounterRef = useRef(0);
   const workspaceRef = useRef<WorkspaceKeys | null>(null);
   const currentKeyRef = useRef<string | null>(null);
@@ -2003,6 +2052,7 @@ export function App() {
       ) {
         history.replaceState(null, "", `${canonicalPath}${canonicalHash}`);
       }
+      setBootstrapWelcomeDoc(false);
       setWorkspace(activeWorkspace);
       return;
     }
@@ -2014,22 +2064,31 @@ export function App() {
       setFallbackActive(value);
     };
     setWorkspace(null);
+    setBootstrapWelcomeDoc(false);
 
-    const commit = (value: WorkspaceKeys | null) => {
+    let shouldBootstrapWelcome = bootstrapNextWorkspace;
+
+    const commit = (value: WorkspaceKeys | null, bootstrap = false) => {
       if (ensureCounterRef.current !== ensureId) return;
       currentKeyRef.current = value
         ? `${value.publicHex}#${value.privateHex}`
         : null;
       workspaceRef.current = value;
       setWorkspace(value);
+      setBootstrapWelcomeDoc(Boolean(value) && bootstrap);
+      if (bootstrapNextWorkspace) {
+        bootstrapNextWorkspace = false;
+      }
     };
 
     const [rawPub, rawPriv = ""] = routeKey.split("#");
     const candidatePub = rawPub?.trim().toLowerCase() ?? "";
     const candidatePriv = rawPriv.trim().toLowerCase();
     const hexPattern = /^[0-9a-f]+$/i;
-
-    const useResolvedWorkspace = (value: WorkspaceKeys | null) => {
+    const useResolvedWorkspace = (
+      value: WorkspaceKeys | null,
+      options?: { bootstrapWelcome?: boolean },
+    ) => {
       if (!value) {
         commit(null);
         return;
@@ -2042,7 +2101,8 @@ export function App() {
       ) {
         history.replaceState(null, "", `${canonicalPath}${canonicalHash}`);
       }
-      commit(value);
+      const shouldBootstrap = options?.bootstrapWelcome ?? false;
+      commit(value, shouldBootstrap);
     };
 
     const cryptoModule = await loadCryptoModule();
@@ -2075,14 +2135,17 @@ export function App() {
           const publicHex = await cryptoModule.exportRawPublicKeyHex(
             imported.publicKey,
           );
-          const jwk = await crypto.subtle.exportKey("jwk", imported.privateKey);
-          const privateHex = cryptoModule.bytesToHex(
-            cryptoModule.base64UrlToBytes(jwk.d ?? ""),
-          );
-          applyFallbackFlag(false);
-          useResolvedWorkspace({ publicHex, privateHex });
-          return;
-        }
+        const jwk = await crypto.subtle.exportKey("jwk", imported.privateKey);
+        const privateHex = cryptoModule.bytesToHex(
+          cryptoModule.base64UrlToBytes(jwk.d ?? ""),
+        );
+        applyFallbackFlag(false);
+        useResolvedWorkspace(
+          { publicHex, privateHex },
+          { bootstrapWelcome: shouldBootstrapWelcome },
+        );
+        return;
+      }
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -2100,6 +2163,12 @@ export function App() {
         });
         return;
       }
+      if (!candidatePub && !candidatePriv) {
+        shouldBootstrapWelcome = true;
+      }
+      if (bootstrapNextWorkspace) {
+        shouldBootstrapWelcome = true;
+      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn("Load last workspace failed:", error);
@@ -2108,10 +2177,13 @@ export function App() {
     try {
       const generated = await cryptoModule.generatePairAndUrl();
       applyFallbackFlag(false);
-      useResolvedWorkspace({
-        publicHex: generated.publicHex,
-        privateHex: generated.privateHex,
-      });
+      useResolvedWorkspace(
+        {
+          publicHex: generated.publicHex,
+          privateHex: generated.privateHex,
+        },
+        { bootstrapWelcome: shouldBootstrapWelcome },
+      );
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Failed to create workspace:", error);
@@ -2141,6 +2213,7 @@ export function App() {
       key={key}
       workspace={workspace}
       fallbackActive={fallbackActive}
+      bootstrapWelcomeDoc={bootstrapWelcomeDoc}
     />
   );
 }
