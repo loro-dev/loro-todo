@@ -1673,12 +1673,6 @@ function WorkspaceSession({
             }
             return stableTodos.map((t) => {
               const realIndex = indexByCid[t.$cid] ?? 0;
-              const isInsertTop =
-                insertIndex != null && insertIndex === realIndex;
-              const isInsertBottom =
-                insertIndex != null &&
-                insertIndex === state.todos.length &&
-                realIndex === state.todos.length - 1;
               const baseY = positions.pos[t.$cid] ?? 0;
               let translateY = baseY;
               let transition = transformTransitionsReady
@@ -1738,8 +1732,6 @@ function WorkspaceSession({
                   onDoneChange={handleDoneChange}
                   onDelete={handleDelete}
                   dragging={dragCid === t.$cid}
-                  insertTop={!!isInsertTop}
-                  insertBottom={!!isInsertBottom}
                   onManualPointerDown={handleManualPointerDown}
                   onManualPointerMove={handleManualPointerMove}
                   onManualPointerUp={handleManualPointerUp}
@@ -2027,8 +2019,6 @@ type TodoItemRowProps = {
   onDoneChange: (cid: string, done: boolean) => void;
   onDelete: (cid: string) => void;
   dragging: boolean;
-  insertTop: boolean;
-  insertBottom: boolean;
   onManualPointerDown?: (
     cid: string,
     e: React.PointerEvent<HTMLLIElement>,
@@ -2057,8 +2047,6 @@ function TodoItemRow({
   onDoneChange,
   onDelete,
   dragging,
-  insertTop,
-  insertBottom,
   onManualPointerDown,
   onManualPointerMove,
   onManualPointerUp,
@@ -2159,11 +2147,9 @@ function TodoItemRow({
     }
   }, [selectionActions, todo.$cid]);
 
-  const className = `todo-item card${isDone ? " done" : ""}${dragging ? " dragging" : ""}${
-    insertTop ? " insert-top" : ""
-  }${insertBottom ? " insert-bottom" : ""}${isSelected ? " selected" : ""}${
-    isEditing ? " editing" : ""
-  }`;
+  const className = `todo-item card${isDone ? " done" : ""}${
+    dragging ? " dragging" : ""
+  }${isSelected ? " selected" : ""}${isEditing ? " editing" : ""}`;
 
   return (
     <li

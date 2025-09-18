@@ -554,23 +554,6 @@ body.is-dragging .drag-handle {
     caret-color: transparent;
 }
 
-/* Insertion preview line */
-.todo-item.insert-top::before,
-.todo-item.insert-bottom::after {
-    content: "";
-    position: absolute;
-    left: 8px;
-    right: 8px;
-    height: 2px;
-    background: color-mix(in oklab, var(--brand) 60%, #ffffff);
-}
-.todo-item.insert-top::before {
-    top: -2px;
-}
-.todo-item.insert-bottom::after {
-    bottom: -2px;
-}
-
 .drag-handle {
     position: absolute;
     left: -34px; /* keep ~6px gap with larger size */
@@ -610,8 +593,6 @@ body.is-dragging .drag-handle {
         padding-left: 18px;
     }
 }
-
-/* Deprecated drag-over visual removed in favor of insert line */
 
 .todo-checkbox {
     /* Use content-box so border doesn't shrink content size */
