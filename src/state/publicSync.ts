@@ -87,7 +87,7 @@ export async function setupPublicSync(
   handlers: PublicSyncHandlers,
   options: PublicSyncOptions = {},
 ): Promise<PublicSyncSession> {
-  const adaptor = createLoroAdaptorFromDoc(doc);
+  let adaptor: ReturnType<typeof createLoroAdaptorFromDoc> | null = null;
   let roomCleanup: (() => Promise<void> | void) | null = null;
   let offStatus: (() => void) | null = null;
   let offLatency: (() => void) | null = null;
@@ -175,6 +175,8 @@ export async function setupPublicSync(
       handlers.setLatency?.(null);
       handlers.setOnline(false);
     } else {
+      adaptor = createLoroAdaptorFromDoc(doc);
+      const activeAdaptor = adaptor;
       const imported = await importKeyPairFromHex(
         currentPublicHex,
         currentPrivateHex,
@@ -245,7 +247,7 @@ export async function setupPublicSync(
       await activeClient.waitConnected();
       const room = await activeClient.join({
         roomId: ROOM_ID,
-        crdtAdaptor: adaptor,
+        crdtAdaptor: activeAdaptor,
       });
       await room.waitForReachingServerVersion();
       handlers.setDetached(doc.isDetached());
@@ -278,7 +280,8 @@ export async function setupPublicSync(
     void roomCleanup?.();
     offStatus?.();
     offLatency?.();
-    adaptor.destroy();
+    adaptor?.destroy();
+    adaptor = null;
     handlers.setConnectionStatus?.(ClientStatus.Disconnected);
     handlers.setLatency?.(null);
     handlers.setOnline(false);

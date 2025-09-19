@@ -137,7 +137,7 @@ export function NetworkStatusIndicator({
                             ●
                         </span>
                     )}
-                    {(!includesSelf || totalCount > 1) && (
+                    {(totalCount > 1) && (
                         <span
                             style={{
                                 marginLeft: 6,
