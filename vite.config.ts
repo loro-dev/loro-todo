@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command: _ }) => ({
   plugins: [react(), wasm(), topLevelAwait()],
   build: {
     target: "es2019",
