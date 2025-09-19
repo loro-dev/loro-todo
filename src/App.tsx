@@ -729,7 +729,7 @@ function WorkspaceSession({
   }, []);
 
   const workspaceFileName = useMemo(() => {
-    const fallback = workspaceHex || "workspace";
+    const fallback = workspaceHex || "list";
     const rawBase = workspaceTitle.trim() || fallback;
     const safeBase = rawBase
       .replace(/[^a-zA-Z0-9-_]+/g, "_")
@@ -846,7 +846,7 @@ function WorkspaceSession({
           reason: "persist() threw or rejected",
         });
         showWarning(
-          "Persistent storage request failed. The browser may clear this workspace—export a backup to protect it.",
+          "Persistent storage request failed. The browser may clear this list—export a backup to protect it.",
         );
         return false;
       })
@@ -1012,7 +1012,7 @@ function WorkspaceSession({
       }
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.warn("Delete workspace failed:", error);
+      console.warn("Delete list failed:", error);
       skipSnapshotOnUnloadRef.current = false;
     }
   }, [workspaceHex]);
@@ -1066,7 +1066,7 @@ function WorkspaceSession({
 
   const handleExportWorkspace = useCallback(() => {
     if (!workspaceHex) {
-      handleStatusToast("Workspace not ready");
+      handleStatusToast("List not ready");
       return;
     }
     void requestPersistentStorage();
@@ -1087,7 +1087,7 @@ function WorkspaceSession({
       anchor.click();
       body.removeChild(anchor);
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      handleStatusToast("Workspace exported");
+      handleStatusToast("List exported");
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn("Export workspace failed:", error);
@@ -1106,7 +1106,7 @@ function WorkspaceSession({
 
   const handleRequestImport = useCallback(() => {
     if (!workspaceHex) {
-      handleStatusToast("Workspace not ready");
+      handleStatusToast("List not ready");
       return;
     }
     void requestPersistentStorage();
@@ -1120,7 +1120,7 @@ function WorkspaceSession({
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       if (!workspaceHex) {
         event.currentTarget.value = "";
-        handleStatusToast("Workspace not ready");
+        handleStatusToast("List not ready");
         return;
       }
       const input = event.currentTarget;
@@ -1132,7 +1132,7 @@ function WorkspaceSession({
         const bytes = new Uint8Array(buffer);
         doc.import(bytes);
         await persistSnapshotNow();
-        handleStatusToast("Workspace imported");
+        handleStatusToast("List imported");
       } catch (error) {
         // eslint-disable-next-line no-console
         console.warn("Import workspace failed:", error);
@@ -1520,9 +1520,9 @@ function WorkspaceSession({
                   });
                 }, 300);
               }}
-              placeholder="Workspace name"
+              placeholder="List name"
               disabled={detached || joiningWorkspace}
-              aria-label="Workspace name"
+              aria-label="List name"
             />
             <span
               className="workspace-title-measure"
@@ -1536,8 +1536,8 @@ function WorkspaceSession({
               type="button"
               ref={wsDropdownButtonRef}
               onClick={() => setShowWsMenu((v) => !v)}
-              aria-label="Switch workspace"
-              title="Switch workspace"
+              aria-label="Switch list"
+              title="Switch list"
               disabled={false}
             >
               <MaterialSymbolsKeyboardArrowDown />
@@ -1624,7 +1624,7 @@ function WorkspaceSession({
                   return (
                     <div className="ws-menu">
                       {options.length === 0 && (
-                        <div className="ws-empty">No workspaces</div>
+                        <div className="ws-empty">No lists</div>
                       )}
                       {options.map(({ id, name }) => (
                         <button
@@ -1644,7 +1644,7 @@ function WorkspaceSession({
                         type="button"
                       >
                         <MdiTrayArrowUp className="ws-icon" aria-hidden />
-                        <span>Export</span>
+                        <span>Export list</span>
                         <span
                           className="ws-help-icon"
                           title="Exports a .loro CRDT snapshot (loro.dev format)"
@@ -1659,10 +1659,10 @@ function WorkspaceSession({
                         type="button"
                       >
                         <MdiTrayArrowDown className="ws-icon" aria-hidden />
-                        <span>Import</span>
+                        <span>Import list</span>
                         <span
                           className="ws-help-icon"
-                          title="Imports a .loro CRDT snapshot (loro.dev format) into this workspace"
+                          title="Imports a .loro CRDT snapshot (loro.dev format) into this list"
                         >
                           <MdiHelpCircleOutline aria-hidden />
                         </span>
@@ -1681,7 +1681,7 @@ function WorkspaceSession({
                         onClick={() => void onCreate()}
                         role="menuitem"
                       >
-                        ＋ New workspace…
+                        ＋ New list…
                       </button>
                       {workspaceHex && (
                         <button
@@ -1967,10 +1967,10 @@ function WorkspaceSession({
                 event.stopPropagation();
               }}
             >
-              <h2 id="delete-dialog-title">Delete workspace?</h2>
+              <h2 id="delete-dialog-title">Delete list?</h2>
               {/* TODO: REVIEW [Ensure delete confirmation copy matches product tone] */}
               <p id="delete-dialog-body">
-                Deleting only removes this workspace’s local data. It stays in the cloud for 7 days and you can re-add it with the invite URL.
+                Deleting only removes this list’s local data. It stays in the cloud for 7 days and you can re-add it with the invite URL.
               </p>
               <p className="delete-dialog-note">Lose the URL and it cannot be recovered.</p>
               <div className="delete-dialog-actions">
@@ -1979,7 +1979,7 @@ function WorkspaceSession({
                   className="btn btn-secondary"
                   onClick={handleCancelDelete}
                 >
-                  Keep workspace
+                  Keep list
                 </button>
                 <button
                   type="button"
@@ -1988,7 +1988,7 @@ function WorkspaceSession({
                     void handleConfirmDelete();
                   }}
                 >
-                  Delete workspace
+                  Delete list
                 </button>
               </div>
             </section>
