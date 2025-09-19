@@ -43,8 +43,7 @@ import {
   type SelectionSyncSession,
 } from "./state/selectionSync";
 import { getCollaboratorColorForId } from "./collaboratorColors";
-
-const HistoryView = React.lazy(() => import("./HistoryView"));
+import HistoryView from "./HistoryView";
 
 type PublicSyncModule = typeof import("./state/publicSync");
 type CryptoModule = typeof import("./state/crypto");
@@ -541,7 +540,10 @@ function SelectionSyncBridge({
         if (session) {
           const current = selectionRef.current;
           if (current.type === "item") {
-            session.updateLocalSelection({ cid: current.cid, mode: current.mode });
+            session.updateLocalSelection({
+              cid: current.cid,
+              mode: current.mode,
+            });
           } else {
             session.updateLocalSelection(null);
           }
@@ -604,7 +606,9 @@ function WorkspaceSession({
   const [presenceCount, setPresenceCount] = useState<number>(0);
   const [workspaceHex, setWorkspaceHex] = useState<string>(workspace.publicHex);
   const [presencePeers, setPresencePeers] = useState<string[]>([]);
-  const [syncClient, setSyncClient] = useState<LoroWebsocketClient | null>(null);
+  const [syncClient, setSyncClient] = useState<LoroWebsocketClient | null>(
+    null,
+  );
   const [shareUrl, setShareUrl] = useState<string>("");
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | undefined>(undefined);
@@ -828,9 +832,12 @@ function WorkspaceSession({
             "Your browser doesn't support persistent storage here. Export backups regularly to avoid data loss.",
           );
           // eslint-disable-next-line no-console
-          console.warn("Persistent storage unsupported: falling back to best-effort storage.", {
-            reason,
-          });
+          console.warn(
+            "Persistent storage unsupported: falling back to best-effort storage.",
+            {
+              reason,
+            },
+          );
         }
         if (supported && !granted) {
           const reason =
@@ -882,18 +889,23 @@ function WorkspaceSession({
       try {
         const { setupPublicSync } = await loadPublicSyncModule();
         if (!mounted) return;
-        const session = await setupPublicSync(doc, workspace, {
-          setDetached,
-          setOnline,
-          setWorkspaceHex,
-          setShareUrl,
-          setWorkspaces,
-          setConnectionStatus,
-          setLatency: setLatencyMs,
-          setJoiningState: setJoiningWorkspace,
-        }, {
-          bootstrapWelcomeDoc,
-        });
+        const session = await setupPublicSync(
+          doc,
+          workspace,
+          {
+            setDetached,
+            setOnline,
+            setWorkspaceHex,
+            setShareUrl,
+            setWorkspaces,
+            setConnectionStatus,
+            setLatency: setLatencyMs,
+            setJoiningState: setJoiningWorkspace,
+          },
+          {
+            bootstrapWelcomeDoc,
+          },
+        );
         if (!mounted) {
           if (session?.cleanup) void session.cleanup();
           setSyncClient(null);
@@ -1114,7 +1126,12 @@ function WorkspaceSession({
     window.setTimeout(() => {
       wsImportInputRef.current?.click();
     }, 0);
-  }, [handleStatusToast, requestPersistentStorage, setShowWsMenu, workspaceHex]);
+  }, [
+    handleStatusToast,
+    requestPersistentStorage,
+    setShowWsMenu,
+    workspaceHex,
+  ]);
 
   const handleImportFileChange = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1724,11 +1741,7 @@ function WorkspaceSession({
           {/* Room ID inline display removed; shown via selector options */}
         </header>
         {storageWarning && (
-          <div
-            className="storage-warning"
-            role="alert"
-            aria-live="assertive"
-          >
+          <div className="storage-warning" role="alert" aria-live="assertive">
             <span className="storage-warning-message">{storageWarning}</span>
             <button
               type="button"
@@ -1970,9 +1983,12 @@ function WorkspaceSession({
               <h2 id="delete-dialog-title">Delete list?</h2>
               {/* TODO: REVIEW [Ensure delete confirmation copy matches product tone] */}
               <p id="delete-dialog-body">
-                Deleting only removes this list’s local data. It stays in the cloud for 7 days and you can re-add it with the invite URL.
+                Deleting only removes this list’s local data. It stays in the
+                cloud for 7 days and you can re-add it with the invite URL.
               </p>
-              <p className="delete-dialog-note">Lose the URL and it cannot be recovered.</p>
+              <p className="delete-dialog-note">
+                Lose the URL and it cannot be recovered.
+              </p>
               <div className="delete-dialog-actions">
                 <button
                   type="button"
@@ -1995,11 +2011,9 @@ function WorkspaceSession({
           </div>
         )}
         {showHistory && (
-          <Suspense fallback={null}>
-            <div id="workspace-history">
-              <HistoryView doc={doc} />
-            </div>
-          </Suspense>
+          <div id="workspace-history">
+            <HistoryView doc={doc} />
+          </div>
         )}
 
         <ul
@@ -2228,17 +2242,17 @@ export function App() {
           const publicHex = await cryptoModule.exportRawPublicKeyHex(
             imported.publicKey,
           );
-        const jwk = await crypto.subtle.exportKey("jwk", imported.privateKey);
-        const privateHex = cryptoModule.bytesToHex(
-          cryptoModule.base64UrlToBytes(jwk.d ?? ""),
-        );
-        applyFallbackFlag(false);
-        useResolvedWorkspace(
-          { publicHex, privateHex },
-          { bootstrapWelcome: shouldBootstrapWelcome },
-        );
-        return;
-      }
+          const jwk = await crypto.subtle.exportKey("jwk", imported.privateKey);
+          const privateHex = cryptoModule.bytesToHex(
+            cryptoModule.base64UrlToBytes(jwk.d ?? ""),
+          );
+          applyFallbackFlag(false);
+          useResolvedWorkspace(
+            { publicHex, privateHex },
+            { bootstrapWelcome: shouldBootstrapWelcome },
+          );
+          return;
+        }
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -2444,8 +2458,7 @@ function TodoItemRow({
     actions: selectionActions,
     remotePeers,
     remotePeerColors,
-  } =
-    useAppSelection();
+  } = useAppSelection();
   const isSelected =
     selectionState.type === "item" && selectionState.cid === todo.$cid;
   const isEditing = isSelected && selectionState.mode === "editing";
@@ -2462,7 +2475,8 @@ function TodoItemRow({
   const remoteSelectorDots = React.useMemo(
     () =>
       remoteSelectors.map(([peerId]) => {
-        const color = remotePeerColors[peerId] ?? getCollaboratorColorForId(peerId);
+        const color =
+          remotePeerColors[peerId] ?? getCollaboratorColorForId(peerId);
         return (
           <span
             key={peerId}
