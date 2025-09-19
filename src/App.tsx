@@ -614,13 +614,16 @@ function WorkspaceSession({
   const [joiningWorkspace, setJoiningWorkspace] = useState<boolean>(false);
   const wsDebounceRef = useRef<number | undefined>(undefined);
   const [showWsMenu, setShowWsMenu] = useState<boolean>(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
   const wsTitleRef = useRef<HTMLDivElement | null>(null);
   const wsTitleInputRef = useRef<HTMLInputElement | null>(null);
   const wsMeasureRef = useRef<HTMLSpanElement | null>(null);
   const wsMenuRef = useRef<HTMLDivElement | null>(null);
+  const wsDropdownButtonRef = useRef<HTMLButtonElement | null>(null);
   const wsImportInputRef = useRef<HTMLInputElement | null>(null);
   const helpButtonRef = useRef<HTMLButtonElement | null>(null);
   const helpDialogRef = useRef<HTMLDivElement | null>(null);
+  const deleteDialogRef = useRef<HTMLDivElement | null>(null);
   // Flag to skip snapshot on navigations that intentionally delete the workspace
   const skipSnapshotOnUnloadRef = useRef<boolean>(false);
   const newTodoInputRef = useRef<HTMLInputElement | null>(null);
@@ -1013,6 +1016,41 @@ function WorkspaceSession({
       skipSnapshotOnUnloadRef.current = false;
     }
   }, [workspaceHex]);
+
+  const focusWorkspaceSwitcher = useCallback(() => {
+    const button = wsDropdownButtonRef.current;
+    if (!button) return;
+    window.requestAnimationFrame(() => {
+      button.focus();
+    });
+  }, []);
+
+  const handleCancelDelete = useCallback(() => {
+    setShowDeleteDialog(false);
+    focusWorkspaceSwitcher();
+  }, [focusWorkspaceSwitcher]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    setShowDeleteDialog(false);
+    await removeCurrentWorkspace();
+    focusWorkspaceSwitcher();
+  }, [removeCurrentWorkspace, focusWorkspaceSwitcher]);
+
+  useEffect(() => {
+    if (!showDeleteDialog) return;
+    const node = deleteDialogRef.current;
+    node?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleCancelDelete();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showDeleteDialog, handleCancelDelete]);
 
   // Persist the latest snapshot immediately (used before programmatic navigations)
   const persistSnapshotNow = useCallback(async (): Promise<void> => {
@@ -1496,6 +1534,7 @@ function WorkspaceSession({
             <button
               className="title-dropdown btn-text"
               type="button"
+              ref={wsDropdownButtonRef}
               onClick={() => setShowWsMenu((v) => !v)}
               aria-label="Switch workspace"
               title="Switch workspace"
@@ -1537,9 +1576,9 @@ function WorkspaceSession({
                     await createNewWorkspace();
                     setShowWsMenu(false);
                   };
-                  const onDelete = async () => {
-                    await removeCurrentWorkspace();
+                  const onDelete = () => {
                     setShowWsMenu(false);
+                    setShowDeleteDialog(true);
                   };
                   const onJoin = async () => {
                     const input = window.prompt(
@@ -1907,6 +1946,51 @@ function WorkspaceSession({
                 </a>
                 .
               </p>
+            </section>
+          </div>
+        )}
+        {showDeleteDialog && (
+          <div
+            className="confirm-backdrop"
+            role="presentation"
+            onClick={handleCancelDelete}
+          >
+            <section
+              className="card delete-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-dialog-title"
+              aria-describedby="delete-dialog-body"
+              tabIndex={-1}
+              ref={deleteDialogRef}
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <h2 id="delete-dialog-title">Delete workspace?</h2>
+              {/* TODO: REVIEW [Ensure delete confirmation copy matches product tone] */}
+              <p id="delete-dialog-body">
+                Deleting only removes this workspace’s local data. It stays in the cloud for 7 days and you can re-add it with the invite URL.
+              </p>
+              <p className="delete-dialog-note">Lose the URL and it cannot be recovered.</p>
+              <div className="delete-dialog-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleCancelDelete}
+                >
+                  Keep workspace
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={() => {
+                    void handleConfirmDelete();
+                  }}
+                >
+                  Delete workspace
+                </button>
+              </div>
             </section>
           </div>
         )}

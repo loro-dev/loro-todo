@@ -257,8 +257,8 @@ body {
     font-size: 22px;
     line-height: 1;
 }
-.btn:hover:not(:disabled) {
-    /* More distinct hover shift */
+.btn:hover:not(:disabled):not(.btn-danger) {
+    /* More distinct hover shift for neutral buttons */
     background: color-mix(in oklab, var(--btn-bg) 92%, #ffffff);
 }
 .btn:active:not(:disabled) {
@@ -876,6 +876,60 @@ body.is-dragging .drag-handle {
         0 8px 18px rgba(0, 0, 0, 0.18);
     position: relative;
     border-radius: 16px;
+}
+
+.confirm-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(24, 18, 12, 0.45);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 50;
+}
+
+.delete-dialog {
+    width: min(420px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px 28px;
+    box-shadow:
+        0 24px 48px rgba(0, 0, 0, 0.18),
+        0 8px 18px rgba(0, 0, 0, 0.16);
+    border-radius: 16px;
+}
+
+.delete-dialog p {
+    margin: 0;
+}
+
+.delete-dialog h2 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.delete-dialog-note {
+    color: var(--muted);
+}
+
+.delete-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.btn-danger {
+    background: color-mix(in oklab, var(--brand) 92%, #fff 8%);
+    color: var(--primary-contrast);
+    border: 1px solid color-mix(in oklab, var(--brand) 70%, var(--border));
+}
+
+.btn-danger:hover {
+    background: color-mix(in oklab, var(--brand) 88%, #fff 12%);
+    border-color: color-mix(in oklab, var(--crimson) 70%, var(--border));
 }
 
 .help-title {
