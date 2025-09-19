@@ -10,7 +10,7 @@ import type {
     DragEvent as ReactDragEvent,
     PointerEvent as ReactPointerEvent,
 } from "react";
-import type { ClientStatusValue, LoroWebsocketClient } from "loro-websocket";
+import type { ClientStatusValue } from "loro-websocket";
 import { useLoroStore } from "loro-mirror-react";
 import {
     createConfiguredDoc,
@@ -21,10 +21,8 @@ import {
 import { createStore } from "loro-mirror";
 import { useLongPressDrag } from "./useLongPressDrag";
 import { NetworkStatusIndicator } from "./NetworkStatusIndicator";
-import { createPresenceScheduler, type IdleWindow } from "./state/presence";
 import {
     SelectionProvider,
-    useAppSelection,
     type RemoteSelectionMap,
 } from "./selection";
 import HistoryView from "./HistoryView";
@@ -32,34 +30,13 @@ import {
     KeyboardShortcutsBridge,
 } from "./KeyboardShortcutsBridge";
 import { SelectionSyncBridge } from "./SelectionSyncBridge";
-import {
-    MaterialSymbolsKeyboardArrowDown,
-    MdiTrayArrowUp,
-    MdiHelpCircleOutline,
-    MdiTrayArrowDown,
-    MdiLinkVariant,
-    StreamlinePlumpRecycleBin2Remix,
-    MdiBroom,
-    LucideUndo2,
-    IcSharpHistory,
-    LucideInfo,
-    LucideUsers,
-    LucideWifiOff,
-    LucideCode2,
-    LucideGithub,
-} from "./icons";
-import { NewTodoInput } from "./todos/NewTodoInput";
-import { TodoItemRow } from "./todos/TodoItemRow";
 import type { Todo } from "./todos/types";
 import { getCollaboratorColorForId } from "./collaboratorColors";
 import {
-    loadPublicSyncModule,
     deleteWorkspaceAndList,
     ensurePersistentStorage,
-    listAllWorkspaces,
     navigateToWorkspaceRoute,
     saveWorkspaceSnapshot,
-    setupWorkspacePersistence,
     snapshotToArrayBuffer,
     switchToWorkspace,
     updateWorkspaceName,
@@ -67,6 +44,26 @@ import {
     markBootstrapNextWorkspace,
 } from "./workspace";
 import type { WorkspaceKeys, WorkspaceRecord } from "./workspace";
+import {
+    usePublicSyncSession,
+    useWorkspacePersistence,
+    useWorkspaceListLoader,
+    usePreventViewportScaling,
+    useHelpDialogFocus,
+    useDeleteDialogFocus,
+    useWorkspaceTitleAutosize,
+    useWorkspaceMenuDismiss,
+    useWorkspaceMenuPlacement,
+    useSnapshotOnUnload,
+    useGlobalDragDropHandlers,
+} from "./workspace/hooks";
+import { WorkspaceTitleSection } from "./workspace/WorkspaceTitleSection";
+import { WorkspaceToolbar } from "./workspace/WorkspaceToolbar";
+import { HelpDialog, DeleteWorkspaceDialog } from "./workspace/WorkspaceDialogs";
+import { WorkspaceNewTodo } from "./workspace/WorkspaceNewTodo";
+import { WorkspaceTodoList } from "./workspace/WorkspaceTodoList";
+import { StorageWarningBanner } from "./workspace/StorageWarningBanner";
+import { ToastMessage } from "./workspace/ToastMessage";
 
 type WorkspaceSessionProps = {
     workspace: WorkspaceKeys;
@@ -96,14 +93,12 @@ export function WorkspaceSession({
     const [detached, setDetached] = useState<boolean>(doc.isDetached());
     const [showHistory, setShowHistory] = useState<boolean>(false);
     const [showHelp, setShowHelp] = useState<boolean>(false);
-    const [, setOnline] = useState<boolean>(false);
     const [connectionStatus, setConnectionStatus] =
         useState<ClientStatusValue>("connecting");
     const [latencyMs, setLatencyMs] = useState<number | null>(null);
     const [presenceCount, setPresenceCount] = useState<number>(0);
     const [workspaceHex, setWorkspaceHex] = useState<string>(workspace.publicHex);
     const [presencePeers, setPresencePeers] = useState<string[]>([]);
-    const [syncClient, setSyncClient] = useState<LoroWebsocketClient | null>(null);
     const [shareUrl, setShareUrl] = useState<string>("");
     const [toast, setToast] = useState<string | null>(null);
     const toastTimerRef = useRef<number | undefined>(undefined);
@@ -151,6 +146,58 @@ export function WorkspaceSession({
     const displayedWorkspaceTitle = joiningWorkspace && workspaceTitle.trim().length === 0
         ? "Loading..."
         : workspaceTitle;
+
+    usePreventViewportScaling();
+
+    const closeHelp = useCallback(() => {
+        setShowHelp(false);
+    }, [setShowHelp]);
+
+    const syncClient = usePublicSyncSession({
+        doc,
+        workspace,
+        bootstrapWelcomeDoc,
+        setDetached,
+        setWorkspaceHex,
+        setShareUrl,
+        setWorkspaces,
+        setConnectionStatus,
+        setLatencyMs,
+        setJoiningWorkspace,
+        setPresencePeers,
+        setPresenceCount,
+    });
+
+    useWorkspacePersistence(doc, workspaceHex);
+    useWorkspaceListLoader(setWorkspaces);
+    useHelpDialogFocus(showHelp, helpDialogRef, helpButtonRef, closeHelp);
+    useWorkspaceTitleAutosize(
+        displayedWorkspaceTitle,
+        wsTitleInputRef,
+        wsMeasureRef,
+    );
+    useWorkspaceMenuDismiss(showWsMenu, wsTitleRef, setShowWsMenu);
+    useWorkspaceMenuPlacement(showWsMenu, wsMenuRef);
+
+    const handleWorkspaceTitleChange = useCallback((value: string) => {
+        setWorkspaceTitle(value);
+        if (wsDebounceRef.current) {
+            window.clearTimeout(wsDebounceRef.current);
+        }
+        wsDebounceRef.current = window.setTimeout(() => {
+            void setState((draft) => {
+                draft.workspace.name = value;
+            });
+        }, 300);
+    }, [setState, setWorkspaceTitle]);
+
+    const toggleWorkspaceMenu = useCallback(() => {
+        setShowWsMenu((value) => !value);
+    }, [setShowWsMenu]);
+
+    const closeWorkspaceMenu = useCallback(() => {
+        setShowWsMenu(false);
+    }, [setShowWsMenu]);
 
     const [itemHeights, setItemHeights] = useState<Record<string, number>>({});
     const ITEM_GAP = 10;
@@ -235,47 +282,6 @@ export function WorkspaceSession({
         return `${base}.loro`;
     }, [workspaceHex, workspaceTitle]);
 
-    useEffect(() => {
-        if (showHelp) {
-            const node = helpDialogRef.current;
-            node?.focus();
-            const handleKeyDown = (event: KeyboardEvent) => {
-                if (event.key === "Escape") {
-                    setShowHelp(false);
-                }
-            };
-            document.addEventListener("keydown", handleKeyDown);
-            return () => {
-                document.removeEventListener("keydown", handleKeyDown);
-            };
-        }
-        if (helpButtonRef.current) {
-            helpButtonRef.current.focus();
-        }
-        return undefined;
-    }, [showHelp]);
-
-    useEffect(() => {
-        if (typeof document === "undefined") return;
-        const selector = 'meta[name="viewport"]';
-        let meta = document.querySelector<HTMLMetaElement>(selector);
-        const previous = meta?.getAttribute("content") ?? null;
-        const content =
-            "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
-        if (!meta) {
-            meta = document.createElement("meta");
-            meta.setAttribute("name", "viewport");
-            document.head.appendChild(meta);
-        }
-        meta.setAttribute("content", content);
-        return () => {
-            if (!meta) return;
-            if (previous !== null) {
-                meta.setAttribute("content", previous);
-            }
-        };
-    }, []);
-
     const TOAST_DURATION_MS = 2600;
 
     const handleStatusToast = useCallback(
@@ -356,148 +362,6 @@ export function WorkspaceSession({
         return attempt;
     }, [storageWarning]);
 
-    useEffect(() => {
-        setConnectionStatus("connecting");
-        setLatencyMs(null);
-        setOnline(false);
-        setSyncClient(null);
-        const idleWindow = window as IdleWindow;
-        let mounted = true;
-        let sessionCleanup: void | (() => void | Promise<void>);
-        let idleHandle: number | undefined;
-        let startTimeout: number | undefined;
-        setJoiningWorkspace(false);
-
-        const presenceScheduler = createPresenceScheduler({
-            idleWindow,
-            docPeerId: doc.peerIdStr,
-            setPresencePeers,
-            setPresenceCount,
-            isActive: () => mounted,
-        });
-
-        const start = async () => {
-            try {
-                const { setupPublicSync } = await loadPublicSyncModule();
-                if (!mounted) return;
-                const session = await setupPublicSync(
-                    doc,
-                    workspace,
-                    {
-                        setDetached,
-                        setOnline,
-                        setWorkspaceHex,
-                        setShareUrl,
-                        setWorkspaces,
-                        setConnectionStatus,
-                        setLatency: setLatencyMs,
-                        setJoiningState: setJoiningWorkspace,
-                    },
-                    {
-                        bootstrapWelcomeDoc,
-                    },
-                );
-                if (!mounted) {
-                    if (session?.cleanup) void session.cleanup();
-                    setSyncClient(null);
-                    return;
-                }
-                sessionCleanup = session.cleanup;
-                const client = session.client;
-                setSyncClient(client ?? null);
-                if (client) {
-                    presenceScheduler.schedule(client);
-                }
-            } catch (error) {
-                // eslint-disable-next-line no-console
-                console.error("Failed to start public sync:", error);
-                if (mounted) {
-                    setOnline(false);
-                    setSyncClient(null);
-                }
-            }
-        };
-
-        if (typeof idleWindow.requestIdleCallback === "function") {
-            idleHandle = idleWindow.requestIdleCallback(() => {
-                idleHandle = undefined;
-                void start();
-            });
-        } else {
-            startTimeout = window.setTimeout(() => {
-                startTimeout = undefined;
-                void start();
-            }, 200);
-        }
-
-        return () => {
-            mounted = false;
-            presenceScheduler.dispose();
-            if (
-                idleHandle !== undefined &&
-                typeof idleWindow.cancelIdleCallback === "function"
-            ) {
-                idleWindow.cancelIdleCallback(idleHandle);
-            }
-            if (startTimeout !== undefined) window.clearTimeout(startTimeout);
-            if (sessionCleanup) void sessionCleanup();
-            setSyncClient(null);
-        };
-    }, [bootstrapWelcomeDoc, doc, workspace]);
-
-    useEffect(() => {
-        if (!workspaceHex) return;
-        const idleWindow = window as IdleWindow;
-        const cleanup = setupWorkspacePersistence({
-            doc,
-            workspaceId: workspaceHex,
-            idleWindow,
-        });
-        return () => {
-            cleanup();
-        };
-    }, [doc, workspaceHex]);
-
-    useEffect(() => {
-        let alive = true;
-        const idleWindow = window as IdleWindow;
-        let idleHandle: number | undefined;
-        let startTimeout: number | undefined;
-
-        const run = async () => {
-            try {
-                const all = await listAllWorkspaces();
-                if (alive) setWorkspaces(all);
-            } catch (error) {
-                // eslint-disable-next-line no-console
-                console.warn("IndexedDB list workspaces failed:", error);
-            }
-        };
-
-        if (typeof idleWindow.requestIdleCallback === "function") {
-            idleHandle = idleWindow.requestIdleCallback(() => {
-                idleHandle = undefined;
-                void run();
-            });
-        } else {
-            startTimeout = window.setTimeout(() => {
-                startTimeout = undefined;
-                void run();
-            }, 320);
-        }
-
-        return () => {
-            alive = false;
-            if (
-                idleHandle !== undefined &&
-                typeof idleWindow.cancelIdleCallback === "function"
-            ) {
-                idleWindow.cancelIdleCallback(idleHandle);
-            }
-            if (startTimeout !== undefined) window.clearTimeout(startTimeout);
-        };
-    }, []);
-
     const removeCurrentWorkspace = useCallback(async () => {
         if (!workspaceHex) return;
         try {
@@ -536,22 +400,7 @@ export function WorkspaceSession({
         await removeCurrentWorkspace();
         focusWorkspaceSwitcher();
     }, [removeCurrentWorkspace, focusWorkspaceSwitcher]);
-
-    useEffect(() => {
-        if (!showDeleteDialog) return;
-        const node = deleteDialogRef.current;
-        node?.focus();
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.preventDefault();
-                handleCancelDelete();
-            }
-        };
-        document.addEventListener("keydown", handleKeyDown);
-        return () => {
-            document.removeEventListener("keydown", handleKeyDown);
-        };
-    }, [showDeleteDialog, handleCancelDelete]);
+    useDeleteDialogFocus(showDeleteDialog, deleteDialogRef, handleCancelDelete);
 
     const persistSnapshotNow = useCallback(async (): Promise<void> => {
         if (!workspaceHex) return;
@@ -563,6 +412,61 @@ export function WorkspaceSession({
             console.warn("Forced snapshot save failed:", error);
         }
     }, [doc, requestPersistentStorage, workspaceHex]);
+
+    useSnapshotOnUnload(persistSnapshotNow, skipSnapshotOnUnloadRef);
+
+    const handleWorkspaceSelect = useCallback(async (id: string) => {
+        await persistSnapshotNow();
+        await switchToWorkspace(id);
+        closeWorkspaceMenu();
+    }, [closeWorkspaceMenu, persistSnapshotNow]);
+
+    const handleWorkspaceCreate = useCallback(async () => {
+        await persistSnapshotNow();
+        await createNewWorkspace();
+        closeWorkspaceMenu();
+    }, [closeWorkspaceMenu, persistSnapshotNow]);
+
+    const handleWorkspaceDeleteRequest = useCallback(() => {
+        closeWorkspaceMenu();
+        setShowDeleteDialog(true);
+    }, [closeWorkspaceMenu, setShowDeleteDialog]);
+
+    const handleWorkspaceJoin = useCallback(async () => {
+        const input = window.prompt("Paste the invite URL to join:", "");
+        if (!input) {
+            closeWorkspaceMenu();
+            return;
+        }
+        const url = input.trim();
+        try {
+            if (workspaceHex) {
+                await persistSnapshotNow();
+            }
+            let handled = false;
+            try {
+                const parsed = new URL(url, window.location.href);
+                if (parsed.origin === window.location.origin) {
+                    const pathParts = parsed.pathname.split("/").filter(Boolean);
+                    const targetPublic = pathParts[pathParts.length - 1] ?? "";
+                    const targetPrivate = parsed.hash.startsWith("#")
+                        ? parsed.hash.slice(1)
+                        : "";
+                    if (targetPublic && targetPrivate) {
+                        navigateToWorkspaceRoute(targetPublic, targetPrivate);
+                        handled = true;
+                    }
+                }
+            } catch {
+                handled = false;
+            }
+            if (!handled) {
+                window.location.assign(url);
+            }
+        } finally {
+            closeWorkspaceMenu();
+        }
+    }, [closeWorkspaceMenu, persistSnapshotNow, workspaceHex]);
 
     const handleExportWorkspace = useCallback(() => {
         if (!workspaceHex) {
@@ -593,13 +497,13 @@ export function WorkspaceSession({
             console.warn("Export workspace failed:", error);
             handleStatusToast("Export failed");
         } finally {
-            setShowWsMenu(false);
+            closeWorkspaceMenu();
         }
     }, [
         doc,
         handleStatusToast,
         requestPersistentStorage,
-        setShowWsMenu,
+        closeWorkspaceMenu,
         workspaceFileName,
         workspaceHex,
     ]);
@@ -610,14 +514,14 @@ export function WorkspaceSession({
             return;
         }
         void requestPersistentStorage();
-        setShowWsMenu(false);
+        closeWorkspaceMenu();
         window.setTimeout(() => {
             wsImportInputRef.current?.click();
         }, 0);
     }, [
         handleStatusToast,
         requestPersistentStorage,
-        setShowWsMenu,
+        closeWorkspaceMenu,
         workspaceHex,
     ]);
 
@@ -702,59 +606,6 @@ export function WorkspaceSession({
         };
     }, [workspaceTitle, workspaceHex]);
 
-    useEffect(() => {
-        if (!showWsMenu) return;
-        const onDown = (event: MouseEvent) => {
-            if (!wsTitleRef.current) return;
-            if (!wsTitleRef.current.contains(event.target as Node)) {
-                setShowWsMenu(false);
-            }
-        };
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key === "Escape") setShowWsMenu(false);
-        };
-        document.addEventListener("mousedown", onDown);
-        document.addEventListener("keydown", onKey);
-        return () => {
-            document.removeEventListener("mousedown", onDown);
-            document.removeEventListener("keydown", onKey);
-        };
-    }, [showWsMenu]);
-
-    useEffect(() => {
-        const input = wsTitleInputRef.current;
-        const measure = wsMeasureRef.current;
-        if (!input || !measure) return;
-        input.style.width = measure.offsetWidth + 12 + "px";
-    }, [displayedWorkspaceTitle]);
-
-    useEffect(() => {
-        if (!showWsMenu) return;
-        const menu = wsMenuRef.current;
-        if (!menu) return;
-        const margin = 12;
-        const adjust = () => {
-            const rect = menu.getBoundingClientRect();
-            let dx = 0;
-            if (rect.right > window.innerWidth - margin) {
-                dx = window.innerWidth - margin - rect.right;
-            }
-            if (rect.left + dx < margin) {
-                dx = margin - rect.left;
-            }
-            menu.style.transform = `translateX(${dx}px)`;
-            const available = Math.max(120, window.innerHeight - margin - rect.top);
-            menu.style.maxHeight = available + "px";
-            menu.style.overflowY = "auto";
-        };
-        const raf = requestAnimationFrame(adjust);
-        const onResize = () => adjust();
-        window.addEventListener("resize", onResize);
-        return () => {
-            cancelAnimationFrame(raf);
-            window.removeEventListener("resize", onResize);
-        };
-    }, [showWsMenu]);
 
     function addTodo(text: string) {
         if (!text.trim()) return;
@@ -764,19 +615,6 @@ export function WorkspaceSession({
         });
         setNewText("");
     }
-
-    useEffect(() => {
-        const onLeave = () => {
-            if (skipSnapshotOnUnloadRef.current) return;
-            void persistSnapshotNow();
-        };
-        window.addEventListener("pagehide", onLeave);
-        window.addEventListener("beforeunload", onLeave);
-        return () => {
-            window.removeEventListener("pagehide", onLeave);
-            window.removeEventListener("beforeunload", onLeave);
-        };
-    }, [persistSnapshotNow]);
 
     const handleTextChange = useCallback(
         (cid: string, value: string) => {
@@ -875,6 +713,39 @@ export function WorkspaceSession({
         [setState],
     );
 
+    const handleClearCompleted = useCallback(() => {
+        void setState((draft) => {
+            for (let i = draft.todos.length - 1; i >= 0; i--) {
+                if (draft.todos[i].status === "done") {
+                    draft.todos.splice(i, 1);
+                }
+            }
+        });
+    }, [setState]);
+
+    const handleShareInvite = useCallback(() => {
+        if (typeof navigator === "undefined" || !navigator.clipboard) {
+            window.prompt("Copy this invite URL and share it:", shareUrl);
+            return;
+        }
+        void navigator.clipboard.writeText(shareUrl).then(
+            () => {
+                handleStatusToast("Invite link copied");
+            },
+            () => {
+                window.prompt("Copy this invite URL and share it:", shareUrl);
+            },
+        );
+    }, [handleStatusToast, shareUrl]);
+
+    const toggleHistory = useCallback(() => {
+        setShowHistory((value) => !value);
+    }, [setShowHistory]);
+
+    const toggleHelp = useCallback(() => {
+        setShowHelp((value) => !value);
+    }, [setShowHelp]);
+
     const handleDragStart = useCallback((cid: string) => {
         setDragCid(cid);
     }, []);
@@ -931,6 +802,8 @@ export function WorkspaceSession({
         setInsertIndex(null);
     }, [dragCid, insertIndex, setState]);
 
+    useGlobalDragDropHandlers(dragCid, updateInsertIndexFromPointer, commitDrop);
+
     const handleListDrop = useCallback(
         (event?: ReactDragEvent<HTMLUListElement>) => {
             event?.preventDefault();
@@ -978,25 +851,6 @@ export function WorkspaceSession({
         shouldHandlePointerDown: shouldHandleLongPress,
     });
 
-    useEffect(() => {
-        if (!dragCid) return;
-        const onDragOver = (event: DragEvent) => {
-            event.preventDefault();
-            updateInsertIndexFromPointer(event.clientY);
-        };
-        const onDrop = (event: DragEvent) => {
-            event.preventDefault();
-            updateInsertIndexFromPointer(event.clientY);
-            requestAnimationFrame(() => commitDrop());
-        };
-        window.addEventListener("dragover", onDragOver);
-        window.addEventListener("drop", onDrop);
-        return () => {
-            window.removeEventListener("dragover", onDragOver);
-            window.removeEventListener("drop", onDrop);
-        };
-    }, [dragCid, updateInsertIndexFromPointer, commitDrop]);
-
     return (
         <SelectionProvider
             itemOrder={itemOrder}
@@ -1015,212 +869,28 @@ export function WorkspaceSession({
             <SelectionSyncBridge client={syncClient} docPeerId={doc.peerIdStr} />
             <div className="app">
                 <header className="app-header">
-                    <div className="workspace-title" ref={wsTitleRef}>
-                        <input
-                            className="workspace-title-input"
-                            ref={wsTitleInputRef}
-                            value={displayedWorkspaceTitle}
-                            onChange={(event) => {
-                                const value = event.currentTarget.value;
-                                setWorkspaceTitle(value);
-                                if (wsDebounceRef.current)
-                                    window.clearTimeout(wsDebounceRef.current);
-                                wsDebounceRef.current = window.setTimeout(() => {
-                                    void setState((draft) => {
-                                        draft.workspace.name = value;
-                                    });
-                                }, 300);
-                            }}
-                            placeholder="List name"
-                            disabled={detached}
-                            aria-label="List name"
-                        />
-                        <span
-                            className="workspace-title-measure"
-                            ref={wsMeasureRef}
-                            aria-hidden
-                        >
-                            {displayedWorkspaceTitle || "Untitled List"}
-                        </span>
-                        <button
-                            className="title-dropdown btn-text"
-                            type="button"
-                            ref={wsDropdownButtonRef}
-                            onClick={() => setShowWsMenu((value) => !value)}
-                            aria-label="Switch list"
-                            title="Switch list"
-                            disabled={false}
-                        >
-                            <MaterialSymbolsKeyboardArrowDown />
-                        </button>
-                        {showWsMenu && (
-                            <div
-                                className="workspace-selector-pop"
-                                ref={wsMenuRef}
-                                role="menu"
-                            >
-                                {(() => {
-                                    const options: { id: string; name: string }[] = [];
-                                    if (workspaceHex) {
-                                        options.push({
-                                            id: workspaceHex,
-                                            name:
-                                                displayedWorkspaceTitle || workspaceHex.slice(0, 16),
-                                        });
-                                    }
-                                    for (const workspaceInfo of workspaces) {
-                                        if (workspaceInfo.id === workspaceHex) continue;
-                                        options.push({
-                                            id: workspaceInfo.id,
-                                            name:
-                                                workspaceInfo.name ||
-                                                workspaceInfo.label ||
-                                                workspaceInfo.id.slice(0, 16),
-                                        });
-                                    }
-                                    const onChoose = async (id: string) => {
-                                        await persistSnapshotNow();
-                                        await switchToWorkspace(id);
-                                        setShowWsMenu(false);
-                                    };
-                                    const onCreate = async () => {
-                                        await persistSnapshotNow();
-                                        await createNewWorkspace();
-                                        setShowWsMenu(false);
-                                    };
-                                    const onDelete = () => {
-                                        setShowWsMenu(false);
-                                        setShowDeleteDialog(true);
-                                    };
-                                    const onJoin = async () => {
-                                        const input = window.prompt(
-                                            "Paste the invite URL to join:",
-                                            "",
-                                        );
-                                        if (!input) return;
-                                        const url = input.trim();
-                                        try {
-                                            if (workspaceHex) {
-                                                await persistSnapshotNow();
-                                            }
-                                            let handled = false;
-                                            try {
-                                                const parsed = new URL(url, window.location.href);
-                                                if (parsed.origin === window.location.origin) {
-                                                    const pathParts = parsed.pathname
-                                                        .split("/")
-                                                        .filter(Boolean);
-                                                    const targetPublic =
-                                                        pathParts[pathParts.length - 1] ?? "";
-                                                    const targetPrivate = parsed.hash.startsWith("#")
-                                                        ? parsed.hash.slice(1)
-                                                        : "";
-                                                    if (targetPublic && targetPrivate) {
-                                                        navigateToWorkspaceRoute(
-                                                            targetPublic,
-                                                            targetPrivate,
-                                                        );
-                                                        handled = true;
-                                                    }
-                                                }
-                                            } catch {
-                                                handled = false;
-                                            }
-                                            if (!handled) {
-                                                window.location.assign(url);
-                                            }
-                                        } finally {
-                                            setShowWsMenu(false);
-                                        }
-                                    };
-                                    return (
-                                        <div className="ws-menu">
-                                            {options.length === 0 && (
-                                                <div className="ws-empty">No lists</div>
-                                            )}
-                                            {options.map(({ id, name }) => (
-                                                <button
-                                                    key={id}
-                                                    className={`ws-item${
-                                                        id === workspaceHex ? " current" : ""
-                                                    }`}
-                                                    onClick={() => void onChoose(id)}
-                                                    role="menuitem"
-                                                >
-                                                    {name}
-                                                </button>
-                                            ))}
-                                            <div className="ws-sep" />
-                                            <button
-                                                className="ws-action"
-                                                onClick={handleExportWorkspace}
-                                                role="menuitem"
-                                                type="button"
-                                            >
-                                                <MdiTrayArrowUp className="ws-icon" aria-hidden />
-                                                <span>Export list</span>
-                                                <span
-                                                    className="ws-help-icon"
-                                                    title="Exports a .loro CRDT snapshot (loro.dev format)"
-                                                >
-                                                    <MdiHelpCircleOutline aria-hidden />
-                                                </span>
-                                            </button>
-                                            <button
-                                                className="ws-action"
-                                                onClick={handleRequestImport}
-                                                role="menuitem"
-                                                type="button"
-                                            >
-                                                <MdiTrayArrowDown className="ws-icon" aria-hidden />
-                                                <span>Import list</span>
-                                                <span
-                                                    className="ws-help-icon"
-                                                    title="Imports a .loro CRDT snapshot (loro.dev format) into this list"
-                                                >
-                                                    <MdiHelpCircleOutline aria-hidden />
-                                                </span>
-                                            </button>
-                                            <button
-                                                className="ws-action"
-                                                onClick={() => void onJoin()}
-                                                role="menuitem"
-                                                type="button"
-                                            >
-                                                <MdiLinkVariant className="ws-icon" aria-hidden />
-                                                Join by URL…
-                                            </button>
-                                            <button
-                                                className="ws-action"
-                                                onClick={() => void onCreate()}
-                                                role="menuitem"
-                                            >
-                                                ＋ New list…
-                                            </button>
-                                            {workspaceHex && (
-                                                <button
-                                                    className="ws-action danger"
-                                                    onClick={() => void onDelete()}
-                                                    role="menuitem"
-                                                >
-                                                    <StreamlinePlumpRecycleBin2Remix /> Delete current…
-                                                </button>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-                        )}
-                        <input
-                            ref={wsImportInputRef}
-                            type="file"
-                            accept=".loro,application/octet-stream"
-                            style={{ display: "none" }}
-                            onChange={(event) => {
-                                void handleImportFileChange(event);
-                            }}
-                        />
-                    </div>
+                    <WorkspaceTitleSection
+                        displayedWorkspaceTitle={displayedWorkspaceTitle}
+                        disabled={detached}
+                        onTitleChange={handleWorkspaceTitleChange}
+                        titleContainerRef={wsTitleRef}
+                        titleInputRef={wsTitleInputRef}
+                        titleMeasureRef={wsMeasureRef}
+                        dropdownButtonRef={wsDropdownButtonRef}
+                        showMenu={showWsMenu}
+                        onToggleMenu={toggleWorkspaceMenu}
+                        menuRef={wsMenuRef}
+                        workspaceHex={workspaceHex}
+                        workspaces={workspaces}
+                        onChooseWorkspace={handleWorkspaceSelect}
+                        onCreateWorkspace={handleWorkspaceCreate}
+                        onDeleteWorkspace={handleWorkspaceDeleteRequest}
+                        onJoinWorkspace={handleWorkspaceJoin}
+                        onExportWorkspace={handleExportWorkspace}
+                        onRequestImport={handleRequestImport}
+                        importInputRef={wsImportInputRef}
+                        onImportFileChange={handleImportFileChange}
+                    />
                     <NetworkStatusIndicator
                         connectionStatus={connectionStatus}
                         presenceCount={presenceCount}
@@ -1237,388 +907,73 @@ export function WorkspaceSession({
                     )}
                 </header>
                 {storageWarning && (
-                    <div className="storage-warning" role="alert" aria-live="assertive">
-                        <span className="storage-warning-message">{storageWarning}</span>
-                        <button
-                            type="button"
-                            className="storage-warning-dismiss"
-                            onClick={dismissStorageWarning}
-                            aria-label="Dismiss storage warning"
-                        >
-                            Dismiss
-                        </button>
-                    </div>
-                )}
-
-                <div className="new-todo">
-                    <NewTodoInput
-                        inputRef={newTodoInputRef}
-                        value={newText}
-                        detached={detached}
-                        onChange={setNewText}
-                        onSubmit={() => addTodo(newText)}
+                    <StorageWarningBanner
+                        message={storageWarning}
+                        onDismiss={dismissStorageWarning}
                     />
-                    <button
-                        className="btn btn-primary"
-                        onClick={() => {
-                            addTodo(newText);
-                        }}
-                        disabled={detached}
-                    >
-                        Add
-                    </button>
-                </div>
+                )}
 
-                <div className="toolbar">
-                    <button
-                        className="btn btn-secondary btn-icon-only"
-                        onClick={() => {
-                            undo.undo();
-                        }}
-                        disabled={!undo.canUndo?.() || detached}
-                        aria-label="Undo"
-                        title="Undo"
-                    >
-                        <LucideUndo2 className="btn-icon" aria-hidden />
-                    </button>
-                    <button
-                        className="btn btn-secondary btn-icon-only"
-                        onClick={() => {
-                            undo.redo();
-                        }}
-                        disabled={!undo.canRedo?.() || detached}
-                        aria-label="Redo"
-                        title="Redo"
-                    >
-                        <LucideUndo2
-                            className="btn-icon"
-                            style={{ transform: "scaleX(-1)" }}
-                            aria-hidden
-                        />
-                    </button>
-                    <button
-                        className="btn btn-secondary btn-icon-only"
-                        onClick={() =>
-                            void setState((draft) => {
-                                for (let i = draft.todos.length - 1; i >= 0; i--) {
-                                    if (draft.todos[i].status === "done") {
-                                        draft.todos.splice(i, 1);
-                                    }
-                                }
-                            })
-                        }
-                        disabled={detached || !hasDone}
-                        aria-label="Clear completed"
-                        title="Clear completed"
-                    >
-                        <MdiBroom className="btn-icon" aria-hidden />
-                    </button>
-                    <button
-                        className="btn btn-secondary push-right"
-                        onClick={async () => {
-                            try {
-                                await navigator.clipboard.writeText(shareUrl);
-                                if (toastTimerRef.current)
-                                    window.clearTimeout(toastTimerRef.current);
-                                setToast("Invite link copied");
-                                toastTimerRef.current = window.setTimeout(() => {
-                                    setToast(null);
-                                }, TOAST_DURATION_MS);
-                            } catch {
-                                window.prompt("Copy this invite URL and share it:", shareUrl);
-                            }
-                        }}
-                        title="Copy invite URL"
-                    >
-                        Share
-                    </button>
-                    <button
-                        className={
-                            "btn btn-secondary " + (showHistory ? "" : "btn-icon-only")
-                        }
-                        onClick={() => setShowHistory((value) => !value)}
-                        aria-expanded={showHistory}
-                        aria-controls="workspace-history"
-                    >
-                        {showHistory ? (
-                            "Hide History"
-                        ) : (
-                            <IcSharpHistory className="btn-icon" />
-                        )}
-                    </button>
-                    <button
-                        className={"btn btn-secondary " + (showHelp ? "" : "btn-icon-only")}
-                        ref={helpButtonRef}
-                        type="button"
-                        onClick={() => setShowHelp((value) => !value)}
-                        aria-label="About Loro"
-                        aria-expanded={showHelp}
-                        aria-controls="loro-help-panel"
-                        aria-haspopup="dialog"
-                        title={showHelp ? "Hide help" : "About Loro"}
-                    >
-                        {showHelp ? (
-                            "Hide Help"
-                        ) : (
-                            <LucideInfo className="btn-icon" aria-hidden />
-                        )}
-                    </button>
-                </div>
-                {showHelp && (
-                    <div
-                        className="help-backdrop"
-                        role="presentation"
-                        onClick={() => setShowHelp(false)}
-                    >
-                        <section
-                            id="loro-help-panel"
-                            ref={helpDialogRef}
-                            className="help-card card help-dialog"
-                            aria-label="About Loro"
-                            role="dialog"
-                            aria-modal="true"
-                            aria-labelledby="loro-help-title"
-                            tabIndex={-1}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                            }}
-                        >
-                            <header className="help-header">
-                                <h2 className="help-title" id="loro-help-title">
-                                    About
-                                </h2>
-                                <button
-                                    type="button"
-                                    className="help-close"
-                                    onClick={() => setShowHelp(false)}
-                                    aria-label="Close help dialog"
-                                    title="Close"
-                                >
-                                    Close
-                                </button>
-                            </header>
-                            <p className="help-lead">
-                                This example to-do app is powered by Loro. It stays local-first
-                                and account-free, keeping your edits in this browser while
-                                mirroring them through Loro&apos;s relay for seven days so
-                                everyone stays in sync.
-                            </p>
-                            <div className="help-quick-cards">
-                                <article className="help-quick-card">
-                                    <LucideUsers className="help-card-icon" aria-hidden />
-                                    <div>
-                                        <h3>Invite instantly</h3>
-                                        <p>Share the link to co-edit live.</p>
-                                    </div>
-                                </article>
-                                <article className="help-quick-card">
-                                    <LucideWifiOff className="help-card-icon" aria-hidden />
-                                    <div>
-                                        <h3>Stay offline</h3>
-                                        <p>
-                                            Keep working offline; Loro merges edits when you
-                                            reconnect.
-                                        </p>
-                                    </div>
-                                </article>
-                                <article className="help-quick-card">
-                                    <LucideCode2 className="help-card-icon" aria-hidden />
-                                    <div>
-                                        <h3>
-                                            Build with{" "}
-                                            <a
-                                                href="https://loro.dev"
-                                                target="_blank"
-                                                style={{ color: "currentcolor" }}
-                                            >
-                                                Loro
-                                            </a>
-                                        </h3>
-                                        <p>
-                                            Developers can ship collaborative apps like this with the
-                                            same toolkit.
-                                        </p>
-                                    </div>
-                                </article>
-                            </div>
-                            <p className="help-paragraph">
-                                Open source on{" "}
-                                <a
-                                    href="https://github.com/loro-dev/loro-todo"
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="help-inline-link help-github-link"
-                                >
-                                    <LucideGithub className="help-github-icon" aria-hidden />
-                                    loro-dev/loro-todo
-                                </a>
-                                .
-                            </p>
-                        </section>
-                    </div>
-                )}
-                {showDeleteDialog && (
-                    <div
-                        className="confirm-backdrop"
-                        role="presentation"
-                        onClick={handleCancelDelete}
-                    >
-                        <section
-                            className="card delete-dialog"
-                            role="alertdialog"
-                            aria-modal="true"
-                            aria-labelledby="delete-dialog-title"
-                            aria-describedby="delete-dialog-body"
-                            tabIndex={-1}
-                            ref={deleteDialogRef}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                            }}
-                        >
-                            <h2 id="delete-dialog-title">Delete list?</h2>
-                            {/* TODO: REVIEW [Ensure delete confirmation copy matches product tone] */}
-                            <p id="delete-dialog-body">
-                                Deleting only removes this list’s local data. It stays in the
-                                cloud for 7 days and you can re-add it with the invite URL.
-                            </p>
-                            <p className="delete-dialog-note">
-                                Lose the URL and it cannot be recovered.
-                            </p>
-                            <div className="delete-dialog-actions">
-                                <button
-                                    type="button"
-                                    className="btn btn-secondary"
-                                    onClick={handleCancelDelete}
-                                >
-                                    Keep list
-                                </button>
-                                <button
-                                    type="button"
-                                    className="btn btn-danger"
-                                    onClick={() => {
-                                        void handleConfirmDelete();
-                                    }}
-                                >
-                                    Delete list
-                                </button>
-                            </div>
-                        </section>
-                    </div>
-                )}
+                <WorkspaceNewTodo
+                    value={newText}
+                    detached={detached}
+                    onChange={setNewText}
+                    onSubmit={() => addTodo(newText)}
+                    inputRef={newTodoInputRef}
+                />
+
+                <WorkspaceToolbar
+                    onUndo={handleUndo}
+                    onRedo={handleRedo}
+                    disableUndo={!undo.canUndo?.() || detached}
+                    disableRedo={!undo.canRedo?.() || detached}
+                    onClearCompleted={handleClearCompleted}
+                    clearCompletedDisabled={detached || !hasDone}
+                    onShare={handleShareInvite}
+                    onToggleHistory={toggleHistory}
+                    showHistory={showHistory}
+                    onToggleHelp={toggleHelp}
+                    showHelp={showHelp}
+                    helpButtonRef={helpButtonRef}
+                />
+                <HelpDialog open={showHelp} onClose={closeHelp} dialogRef={helpDialogRef} />
+                <DeleteWorkspaceDialog
+                    open={showDeleteDialog}
+                    onCancel={handleCancelDelete}
+                    onConfirm={handleConfirmDelete}
+                    dialogRef={deleteDialogRef}
+                />
                 {showHistory && (
                     <div id="workspace-history">
                         <HistoryView doc={doc} />
                     </div>
                 )}
 
-                <ul
-                    className="todo-list"
-                    ref={listRef}
-                    onDragOver={handleListDragOver}
-                    onDrop={handleListDrop}
-                    style={{
-                        height: positions.height,
-                        touchAction: manualDrag ? "none" : undefined,
-                    }}
-                >
-                    {(() => {
-                        const stableTodos = [...state.todos].sort((a, b) =>
-                            a.$cid.localeCompare(b.$cid),
-                        );
-                        const indexByCid: Record<string, number> = {};
-                        for (let i = 0; i < state.todos.length; i++) {
-                            indexByCid[state.todos[i].$cid] = i;
-                        }
-                        return stableTodos.map((todo) => {
-                            const realIndex = indexByCid[todo.$cid] ?? 0;
-                            const baseY = positions.pos[todo.$cid] ?? 0;
-                            let translateY = baseY;
-                            let transition = transformTransitionsReady
-                                ? "transform 240ms ease"
-                                : "transform 0ms linear";
-                            let zIndex = 1;
-                            const activeDragCid = manualDrag?.cid ?? dragCid;
-                            const isManualActive = manualDrag?.cid === todo.$cid;
-                            const activeDragIndex =
-                                activeDragCid != null ? (indexByCid[activeDragCid] ?? -1) : -1;
-                            const activeDragHeight =
-                                activeDragCid != null
-                                    ? (manualDrag?.height ??
-                                        itemHeights[activeDragCid] ??
-                                        DEFAULT_HEIGHT)
-                                    : DEFAULT_HEIGHT;
-                            if (isManualActive && manualDrag) {
-                                const rawY =
-                                    manualDrag.clientY - manualDrag.listTop - manualDrag.offsetY;
-                                const minY = -manualDrag.height * 0.6;
-                                const maxY = Math.max(
-                                    positions.height - manualDrag.height * 0.4,
-                                    minY,
-                                );
-                                const clampedY = Math.min(Math.max(rawY, minY), maxY);
-                                translateY = clampedY;
-                                transition = "transform 0ms linear";
-                                zIndex = 5;
-                            } else if (activeDragCid === todo.$cid && dragCid === todo.$cid) {
-                                transition = "transform 0ms linear";
-                                zIndex = 5;
-                            }
-                            if (
-                                activeDragCid &&
-                                activeDragIndex !== -1 &&
-                                insertIndex != null &&
-                                todo.$cid !== activeDragCid
-                            ) {
-                                if (insertIndex > activeDragIndex) {
-                                    if (
-                                        realIndex > activeDragIndex &&
-                                        realIndex <= insertIndex - 1
-                                    ) {
-                                        translateY -= activeDragHeight + ITEM_GAP;
-                                    }
-                                } else if (insertIndex <= activeDragIndex) {
-                                    if (realIndex >= insertIndex && realIndex < activeDragIndex) {
-                                        translateY += activeDragHeight + ITEM_GAP;
-                                    }
-                                }
-                            }
-                            return (
-                                <TodoItemRow
-                                    key={todo.$cid}
-                                    todo={todo as Todo}
-                                    onTextChange={handleTextChange}
-                                    onDoneChange={handleDoneChange}
-                                    onDelete={handleDelete}
-                                    dragging={dragCid === todo.$cid}
-                                    onManualPointerDown={handleManualPointerDown}
-                                    onManualPointerMove={handleManualPointerMove}
-                                    onManualPointerUp={handleManualPointerUp}
-                                    onManualPointerCancel={handleManualPointerCancel}
-                                    detached={detached}
-                                    onHeightChange={handleRowHeight}
-                                    onRowRefChange={handleRowAttachment}
-                                    style={{
-                                        position: "absolute",
-                                        left: 0,
-                                        right: 0,
-                                        transform: `translateY(${translateY}px)`,
-                                        transition,
-                                        willChange: "transform",
-                                        zIndex,
-                                        touchAction:
-                                            manualDrag?.cid === todo.$cid ? "none" : undefined,
-                                    }}
-                                />
-                            );
-                        });
-                    })()}
-                </ul>
+                <WorkspaceTodoList
+                    todos={state.todos as Todo[]}
+                    listRef={listRef}
+                    positions={positions}
+                    transformTransitionsReady={transformTransitionsReady}
+                    dragCid={dragCid}
+                    insertIndex={insertIndex}
+                    itemHeights={itemHeights}
+                    itemGap={ITEM_GAP}
+                    defaultHeight={DEFAULT_HEIGHT}
+                    manualDrag={manualDrag}
+                    onListDragOver={handleListDragOver}
+                    onListDrop={handleListDrop}
+                    onTextChange={handleTextChange}
+                    onDoneChange={handleDoneChange}
+                    onDelete={handleDelete}
+                    onHeightChange={handleRowHeight}
+                    onRowRefChange={handleRowAttachment}
+                    onManualPointerDown={handleManualPointerDown}
+                    onManualPointerMove={handleManualPointerMove}
+                    onManualPointerUp={handleManualPointerUp}
+                    onManualPointerCancel={handleManualPointerCancel}
+                    detached={detached}
+                />
 
-                {toast && (
-                    <div className="toast" role="status" aria-live="polite">
-                        {toast}
-                    </div>
-                )}
+                {toast && <ToastMessage>{toast}</ToastMessage>}
             </div>
         </SelectionProvider>
     );
