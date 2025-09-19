@@ -11,6 +11,7 @@
 ## Workspace Lifecycle
 
 - Walk through switching, creating, joining, and deleting workspaces to ensure snapshots save before navigation, the delete dialog traps focus, and deleting the current workspace bootstraps the next one.
+- Rename the list
 - Export a workspace to `.loro`, re-import it, and check success/failure toasts.
 - Trigger the persistent-storage prompt by adding many todos, deny permission, and validate the warning banner plus dismiss flow.
 - Delete the final workspace to confirm the welcome todos seed in automatically and the URL canonicalizes.
