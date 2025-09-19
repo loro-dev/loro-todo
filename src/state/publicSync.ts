@@ -65,6 +65,7 @@ export type PublicSyncHandlers = {
   getWorkspaceTitle?: () => string;
   setConnectionStatus?: (status: ClientStatusValue) => void;
   setLatency?: (latency: number | null) => void;
+  setJoiningState?: (joining: boolean) => void;
 };
 
 export type PublicSyncSession = {
@@ -92,6 +93,12 @@ export async function setupPublicSync(
   let offStatus: (() => void) | null = null;
   let offLatency: (() => void) | null = null;
   let client: LoroWebsocketClient | null = null;
+  let joinStateSignaled = false;
+  const signalJoiningState = (joining: boolean) => {
+    if (joinStateSignaled === joining) return;
+    joinStateSignaled = joining;
+    handlers.setJoiningState?.(joining);
+  };
 
   const subtleAvailable = hasSubtleCrypto();
   const fallbackKeys = getFallbackWorkspaceKeys();
@@ -110,6 +117,7 @@ export async function setupPublicSync(
     : fallbackKeys.share;
   let shouldBootstrapWelcomeDoc = options.bootstrapWelcomeDoc === true;
   let hasLocalSnapshot = false;
+  let workspaceKnown = false;
 
   handlers.setWorkspaceHex(currentPublicHex);
   handlers.setShareUrl(shareUrl);
@@ -118,6 +126,7 @@ export async function setupPublicSync(
     try {
       const db = await openDocDb();
       const existing = await getWorkspace(db, currentPublicHex);
+      workspaceKnown = Boolean(existing);
       const now = Date.now();
       const record: WorkspaceRecord = {
         id: currentPublicHex,
@@ -174,6 +183,7 @@ export async function setupPublicSync(
       handlers.setConnectionStatus?.(ClientStatus.Disconnected);
       handlers.setLatency?.(null);
       handlers.setOnline(false);
+      signalJoiningState(false);
     } else {
       adaptor = createLoroAdaptorFromDoc(doc);
       const activeAdaptor = adaptor;
@@ -222,6 +232,13 @@ export async function setupPublicSync(
       const url = buildAuthUrl(SYNC_BASE, currentPublicHex, token);
       const activeClient = new LoroWebsocketClient({ url });
       client = activeClient;
+      const shouldSignalJoining =
+        !workspaceKnown && !hasLocalSnapshot && !shouldBootstrapWelcomeDoc;
+      if (shouldSignalJoining) {
+        signalJoiningState(true);
+      } else {
+        signalJoiningState(false);
+      }
 
       const applyStatus = (status: ClientStatusValue) => {
         handlers.setConnectionStatus?.(status);
@@ -250,6 +267,7 @@ export async function setupPublicSync(
         crdtAdaptor: activeAdaptor,
       });
       await room.waitForReachingServerVersion();
+      signalJoiningState(false);
       handlers.setDetached(doc.isDetached());
       handlers.setOnline(true);
       try {
@@ -274,6 +292,7 @@ export async function setupPublicSync(
     handlers.setConnectionStatus?.(ClientStatus.Disconnected);
     handlers.setLatency?.(null);
     handlers.setOnline(false);
+    signalJoiningState(false);
   }
 
   const cleanup = () => {
@@ -285,6 +304,7 @@ export async function setupPublicSync(
     handlers.setConnectionStatus?.(ClientStatus.Disconnected);
     handlers.setLatency?.(null);
     handlers.setOnline(false);
+    signalJoiningState(false);
     if (client) {
       try {
         client.destroy();

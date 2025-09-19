@@ -611,6 +611,7 @@ function WorkspaceSession({
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>([]);
   const [workspaceTitle, setWorkspaceTitle] = useState<string>("Untitled List");
+  const [joiningWorkspace, setJoiningWorkspace] = useState<boolean>(false);
   const wsDebounceRef = useRef<number | undefined>(undefined);
   const [showWsMenu, setShowWsMenu] = useState<boolean>(false);
   const wsTitleRef = useRef<HTMLDivElement | null>(null);
@@ -645,6 +646,10 @@ function WorkspaceSession({
       }, {}),
     [presencePeers],
   );
+
+  const displayedWorkspaceTitle = joiningWorkspace
+    ? "Loading..."
+    : workspaceTitle;
 
   // Layout: transform-translate positioning for smooth transitions
   const [itemHeights, setItemHeights] = useState<Record<string, number>>({});
@@ -860,6 +865,7 @@ function WorkspaceSession({
     let sessionCleanup: void | (() => void | Promise<void>);
     let idleHandle: number | undefined;
     let startTimeout: number | undefined;
+    setJoiningWorkspace(false);
 
     const presenceScheduler = createPresenceScheduler({
       idleWindow,
@@ -881,6 +887,7 @@ function WorkspaceSession({
           setWorkspaces,
           setConnectionStatus,
           setLatency: setLatencyMs,
+          setJoiningState: setJoiningWorkspace,
         }, {
           bootstrapWelcomeDoc,
         });
@@ -1157,7 +1164,7 @@ function WorkspaceSession({
     const meas = wsMeasureRef.current;
     if (!input || !meas) return;
     input.style.width = meas.offsetWidth + 12 + "px";
-  }, [workspaceTitle]);
+  }, [displayedWorkspaceTitle]);
 
   // Ensure workspace menu stays inside the viewport with margin
   useEffect(() => {
@@ -1462,8 +1469,9 @@ function WorkspaceSession({
             <input
               className="workspace-title-input"
               ref={wsTitleInputRef}
-              value={workspaceTitle}
+              value={displayedWorkspaceTitle}
               onChange={(e) => {
+                if (joiningWorkspace) return;
                 const v = e.currentTarget.value;
                 setWorkspaceTitle(v);
                 if (wsDebounceRef.current)
@@ -1475,7 +1483,7 @@ function WorkspaceSession({
                 }, 300);
               }}
               placeholder="Workspace name"
-              disabled={detached}
+              disabled={detached || joiningWorkspace}
               aria-label="Workspace name"
             />
             <span
@@ -1483,7 +1491,7 @@ function WorkspaceSession({
               ref={wsMeasureRef}
               aria-hidden
             >
-              {workspaceTitle || "Untitled List"}
+              {displayedWorkspaceTitle || "Untitled List"}
             </span>
             <button
               className="title-dropdown btn-text"
@@ -1506,7 +1514,8 @@ function WorkspaceSession({
                   if (workspaceHex) {
                     options.push({
                       id: workspaceHex,
-                      name: workspaceTitle || workspaceHex.slice(0, 16),
+                      name:
+                        displayedWorkspaceTitle || workspaceHex.slice(0, 16),
                     });
                   }
                   for (const w of workspaces) {
