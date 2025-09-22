@@ -10,19 +10,19 @@ importers:
     dependencies:
       loro-adaptors:
         specifier: 0.1.0
-        version: 0.1.0(loro-crdt@1.7.3)
+        version: 0.1.0(loro-crdt@1.8.0)
       loro-crdt:
-        specifier: ^1.7.3
-        version: 1.7.3
+        specifier: ^1.8.0
+        version: 1.8.0
       loro-mirror:
-        specifier: 0.1.1
-        version: 0.1.1(loro-crdt@1.7.3)
+        specifier: 1.0.0
+        version: 1.0.0(loro-crdt@1.8.0)
       loro-mirror-react:
-        specifier: 0.2.0
-        version: 0.2.0(loro-crdt@1.7.3)(loro-mirror@0.1.1(loro-crdt@1.7.3))(react@18.3.1)
+        specifier: 1.0.0
+        version: 1.0.0(loro-crdt@1.8.0)(loro-mirror@1.0.0(loro-crdt@1.8.0))(react@18.3.1)
       loro-websocket:
         specifier: 0.1.2
-        version: 0.1.2(loro-crdt@1.7.3)
+        version: 0.1.2(loro-crdt@1.8.0)
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -674,20 +674,20 @@ packages:
     peerDependencies:
       loro-crdt: ^1.7.1
 
-  loro-crdt@1.7.3:
-    resolution: {integrity: sha512-bP/Su2mVDf0ieIdOH8RyQ4Dg8hIJUQCzwTfzpuPtQl7XoAk2tzYe5Dt77kIAmioN6DyCI0Frbt2Nr9lHBPf9Mw==}
+  loro-crdt@1.8.0:
+    resolution: {integrity: sha512-MzluzAzmxgBXBnlkZLmlC3gpMECTNy2I6nq+MusnVjUFwxXvq4LUtEOnj5+bVE6wFqSLzqaxjBvlOvfApW2Jmg==}
 
-  loro-mirror-react@0.2.0:
-    resolution: {integrity: sha512-4UrvUDgWntytXtKeN87SFfrQNvZLBzNxsfbxm9ClC9WqAXyWDy84EbK24moUv+yTeyge+McT0tZpTBHlA9Ow+Q==}
+  loro-mirror-react@1.0.0:
+    resolution: {integrity: sha512-GjA2P9i6Vd3tgnAk9LyCdmsHgybMi0/AKLc8q4oCYNssz2O6Jf8zY4th6N3vl+NQgHxZ9eJC08DeilNORE9gcw==}
     peerDependencies:
-      loro-crdt: ^1.7.1
-      loro-mirror: 0.1.1
+      loro-crdt: ^1.8.0
+      loro-mirror: 1.0.0
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
 
-  loro-mirror@0.1.1:
-    resolution: {integrity: sha512-VBG1IcbYvhBw7gONXZHv8kHtiUCNWT0IZe+5cCDlOFnHy375/u5erLQ0HdeRfW2+40BJSKSbPRPfPvL1/ipYlQ==}
+  loro-mirror@1.0.0:
+    resolution: {integrity: sha512-77PyZxkA/xyq8igmVO2bH6U3EkrKICz7Gnhu2fQ/L5UO61JC+zisUwy/8Hy26DXrVE07jih0WbwVZ7sMJLRcbg==}
     peerDependencies:
-      loro-crdt: ^1.7.1
+      loro-crdt: ^1.8.0
 
   loro-protocol@0.1.0:
     resolution: {integrity: sha512-cImsQOwKn4ax0ptsmnUfPKyct7AzOhB/NnXNu911fSLIm4n9T0a2pCf6AzriyxZwGqMx/uIZlYq5QNUKRKZaXw==}
@@ -1325,31 +1325,31 @@ snapshots:
     dependencies:
       js-tokens: 4.0.0
 
-  loro-adaptors@0.1.0(loro-crdt@1.7.3):
+  loro-adaptors@0.1.0(loro-crdt@1.8.0):
     dependencies:
-      loro-crdt: 1.7.3
+      loro-crdt: 1.8.0
       loro-protocol: 0.1.0
 
-  loro-crdt@1.7.3: {}
+  loro-crdt@1.8.0: {}
 
-  loro-mirror-react@0.2.0(loro-crdt@1.7.3)(loro-mirror@0.1.1(loro-crdt@1.7.3))(react@18.3.1):
+  loro-mirror-react@1.0.0(loro-crdt@1.8.0)(loro-mirror@1.0.0(loro-crdt@1.8.0))(react@18.3.1):
     dependencies:
-      loro-crdt: 1.7.3
-      loro-mirror: 0.1.1(loro-crdt@1.7.3)
+      loro-crdt: 1.8.0
+      loro-mirror: 1.0.0(loro-crdt@1.8.0)
       react: 18.3.1
 
-  loro-mirror@0.1.1(loro-crdt@1.7.3):
+  loro-mirror@1.0.0(loro-crdt@1.8.0):
     dependencies:
       immer: 10.1.3
-      loro-crdt: 1.7.3
+      loro-crdt: 1.8.0
 
   loro-protocol@0.1.0: {}
 
-  loro-websocket@0.1.2(loro-crdt@1.7.3):
+  loro-websocket@0.1.2(loro-crdt@1.8.0):
     dependencies:
       '@types/ws': 8.18.1
-      loro-adaptors: 0.1.0(loro-crdt@1.7.3)
-      loro-crdt: 1.7.3
+      loro-adaptors: 0.1.0(loro-crdt@1.8.0)
+      loro-crdt: 1.8.0
       loro-protocol: 0.1.0
       ws: 8.18.3
     transitivePeerDependencies:

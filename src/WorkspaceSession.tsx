@@ -12,7 +12,7 @@ import {
   initialTodoState,
   todoSchema,
 } from "./state/doc";
-import { createStore } from "loro-mirror";
+import { Mirror } from "loro-mirror";
 import { useLongPressDrag } from "./useLongPressDrag";
 import { NetworkStatusIndicator } from "./NetworkStatusIndicator";
 import { SelectionProvider } from "./selection";
@@ -179,7 +179,7 @@ export function WorkspaceSession({
         window.clearTimeout(wsDebounceRef.current);
       }
       wsDebounceRef.current = window.setTimeout(() => {
-        void setState((draft) => {
+        setState((draft) => {
           draft.workspace.name = value;
         });
       }, 300);
@@ -541,7 +541,7 @@ export function WorkspaceSession({
 
         const importedDoc = createConfiguredDoc();
         importedDoc.import(bytes);
-        const importedStore = createStore({
+        const importedStore = new Mirror({
           doc: importedDoc,
           schema: todoSchema,
           initialState: initialTodoState,
@@ -554,7 +554,7 @@ export function WorkspaceSession({
             ? importedState.workspace.name
             : "Untitled List";
 
-        await setState((draft) => {
+        setState((draft) => {
           draft.todos.splice(0, draft.todos.length);
           for (const todo of importedTodos) {
             const status = todo.status === "done" ? "done" : "todo";
@@ -789,7 +789,7 @@ export function WorkspaceSession({
 
   const commitDrop = useCallback(() => {
     if (!dragCid || insertIndex == null) return;
-    void setState((draft) => {
+    setState((draft) => {
       const from = draft.todos.findIndex((todo) => todo.$cid === dragCid);
       if (from === -1) return;
       let to = insertIndex;
