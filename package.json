@@ -14,6 +14,7 @@
     "lint": "oxlint --type-aware"
   },
   "dependencies": {
+    "@loro-dev/peer-lease": "^2.0.0",
     "loro-adaptors": "0.1.0",
     "loro-crdt": "^1.8.0",
     "loro-mirror": "1.0.0",

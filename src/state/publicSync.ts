@@ -1,5 +1,6 @@
 import type { LoroDoc } from "loro-crdt";
 import { createLoroAdaptorFromDoc } from "loro-adaptors";
+import { tryReuseLoroPeerId } from "@loro-dev/peer-lease";
 import { ClientStatus, LoroWebsocketClient } from "loro-websocket";
 import type { ClientStatusValue } from "loro-websocket";
 import {
@@ -99,6 +100,34 @@ export async function setupPublicSync(
     joinStateSignaled = joining;
     handlers.setJoiningState?.(joining);
   };
+  let releasePeerLease: (() => void | Promise<void>) | null = null;
+
+  const releaseLease = () => {
+    if (!releasePeerLease) return;
+    try {
+      const result = releasePeerLease();
+      if (
+        result &&
+        typeof (result as Promise<unknown>).then === "function"
+      ) {
+        void (result as Promise<unknown>);
+      }
+    } catch {
+      /* noop */
+    }
+    releasePeerLease = null;
+  };
+
+  const acquireLease = async (workspaceId: string) => {
+    if (!workspaceId) return;
+    try {
+      releasePeerLease = await tryReuseLoroPeerId(workspaceId, doc);
+    } catch (error) {
+      releasePeerLease = null;
+      // eslint-disable-next-line no-console
+      console.warn("Failed to reuse peer id:", error);
+    }
+  };
 
   const subtleAvailable = hasSubtleCrypto();
   const fallbackKeys = getFallbackWorkspaceKeys();
@@ -176,6 +205,7 @@ export async function setupPublicSync(
     }
 
     if (!subtleAvailable) {
+      await acquireLease(currentPublicHex);
       console.warn(
         "Web Crypto Subtle API unavailable; skipping websocket sync and keeping workspace offline.",
       );
@@ -185,8 +215,6 @@ export async function setupPublicSync(
       handlers.setOnline(false);
       signalJoiningState(false);
     } else {
-      adaptor = createLoroAdaptorFromDoc(doc);
-      const activeAdaptor = adaptor;
       const imported = await importKeyPairFromHex(
         currentPublicHex,
         currentPrivateHex,
@@ -196,7 +224,7 @@ export async function setupPublicSync(
       }
       const privateKey = imported.privateKey;
       const publicKey = imported.publicKey;
-      currentPublicHex = await exportRawPublicKeyHex(publicKey);
+      currentPublicHex = (await exportRawPublicKeyHex(publicKey)).trim().toLowerCase();
       const jwkPriv = await crypto.subtle.exportKey("jwk", privateKey);
       const dBytes = base64UrlToBytes(jwkPriv.d ?? "");
       currentPrivateHex = bytesToHex(dBytes);
@@ -228,6 +256,9 @@ export async function setupPublicSync(
         console.warn("IndexedDB workspace save/list failed:", error);
       }
 
+      await acquireLease(currentPublicHex);
+      adaptor = createLoroAdaptorFromDoc(doc);
+      const activeAdaptor = adaptor;
       const token = await signSaltTokenHex(privateKey);
       const url = buildAuthUrl(SYNC_BASE, currentPublicHex, token);
       const activeClient = new LoroWebsocketClient({ url });
@@ -293,6 +324,7 @@ export async function setupPublicSync(
     handlers.setLatency?.(null);
     handlers.setOnline(false);
     signalJoiningState(false);
+    releaseLease();
   }
 
   const cleanup = () => {
@@ -305,6 +337,7 @@ export async function setupPublicSync(
     handlers.setLatency?.(null);
     handlers.setOnline(false);
     signalJoiningState(false);
+    releaseLease();
     if (client) {
       try {
         client.destroy();

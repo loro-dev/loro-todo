@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@loro-dev/peer-lease':
+        specifier: ^2.0.0
+        version: 2.0.0(loro-crdt@1.8.0)
       loro-adaptors:
         specifier: 0.1.0
         version: 0.1.0(loro-crdt@1.8.0)
@@ -296,6 +299,12 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@loro-dev/peer-lease@2.0.0':
+    resolution: {integrity: sha512-Yo1+EMQvle3B5gLesjXBnm/dOxsHOZbE+bz7E8crAuPh1Xw8rkp7g03WyD5ZEKcPkpkGqyk+AFZ8fsxBTPjZjA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      loro-crdt: ^1.8.0
 
   '@oxlint-tsgolint/darwin-arm64@0.2.0':
     resolution: {integrity: sha512-ayJO9SmiJ15oV3+svIw8bqun0ySdjiD7L+ddwNB4vOAgUX/rdX1KTBnDb/ZEk6MOFBnFgbbiEiLRJLlGtuFYVQ==}
@@ -1038,6 +1047,10 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@loro-dev/peer-lease@2.0.0(loro-crdt@1.8.0)':
+    dependencies:
+      loro-crdt: 1.8.0
 
   '@oxlint-tsgolint/darwin-arm64@0.2.0':
     optional: true
