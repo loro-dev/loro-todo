@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@loro-dev/peer-lease':
-        specifier: ^2.0.0
-        version: 2.0.0(loro-crdt@1.8.0)
+        specifier: ^2.0.1
+        version: 2.0.1(loro-crdt@1.8.0)
       loro-adaptors:
         specifier: 0.1.0
         version: 0.1.0(loro-crdt@1.8.0)
@@ -300,8 +300,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@loro-dev/peer-lease@2.0.0':
-    resolution: {integrity: sha512-Yo1+EMQvle3B5gLesjXBnm/dOxsHOZbE+bz7E8crAuPh1Xw8rkp7g03WyD5ZEKcPkpkGqyk+AFZ8fsxBTPjZjA==}
+  '@loro-dev/peer-lease@2.0.1':
+    resolution: {integrity: sha512-lOybU8srhhA4YjQuzVuYd6pQJcwIskm3kyf6JF5oX9R6C+ogY8AUl7PAD/bWLK2vYqg2iD5fH6KUdtRomsHT9A==}
     engines: {node: '>=18'}
     peerDependencies:
       loro-crdt: ^1.8.0
@@ -1048,7 +1048,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@loro-dev/peer-lease@2.0.0(loro-crdt@1.8.0)':
+  '@loro-dev/peer-lease@2.0.1(loro-crdt@1.8.0)':
     dependencies:
       loro-crdt: 1.8.0
 
