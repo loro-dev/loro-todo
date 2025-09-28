@@ -303,15 +303,9 @@ export function usePublicSyncSession({
         let sessionCleanup: void | (() => void | Promise<void>);
         let idleHandle: number | undefined;
         let startTimeout: number | undefined;
+        let presenceScheduler: ReturnType<typeof createPresenceScheduler> | null =
+            null;
         setJoiningWorkspace(false);
-
-        const presenceScheduler = createPresenceScheduler({
-            idleWindow,
-            docPeerId: doc.peerIdStr,
-            setPresencePeers,
-            setPresenceCount,
-            isActive: () => mounted,
-        });
 
         const start = async () => {
             try {
@@ -345,7 +339,18 @@ export function usePublicSyncSession({
                 const client = session.client;
                 setSyncClient(client ?? null);
                 if (client) {
+                    presenceScheduler?.dispose();
+                    presenceScheduler = createPresenceScheduler({
+                        idleWindow,
+                        docPeerId: doc.peerIdStr,
+                        setPresencePeers,
+                        setPresenceCount,
+                        isActive: () => mounted,
+                    });
                     presenceScheduler.schedule(client);
+                } else {
+                    presenceScheduler?.dispose();
+                    presenceScheduler = null;
                 }
             } catch (error) {
                 // eslint-disable-next-line no-console
@@ -370,7 +375,8 @@ export function usePublicSyncSession({
 
         return () => {
             mounted = false;
-            presenceScheduler.dispose();
+            presenceScheduler?.dispose();
+            presenceScheduler = null;
             if (
                 idleHandle !== undefined &&
                 typeof idleWindow.cancelIdleCallback === "function"
