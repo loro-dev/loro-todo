@@ -225,9 +225,10 @@ function scrollIntoViewWithMargin(
 
 function getTranslateY(element: HTMLElement): number | null {
   const inline = element.style.transform;
-  const computed = inline && inline !== "none"
-    ? inline
-    : window.getComputedStyle(element).transform;
+  const computed =
+    inline && inline !== "none"
+      ? inline
+      : window.getComputedStyle(element).transform;
   if (!computed || computed === "none") return null;
 
   const translateMatch = /translateY\((-?\d+(?:\.\d+)?)px\)/.exec(computed);
@@ -258,7 +259,7 @@ export type SelectionContextValue = {
   actions: SelectionActions;
   remotePeers: RemoteSelectionMap;
   remotePeerColors: Record<string, string>;
-  setRemotePeers(next: RemoteSelectionMap): void;
+  setRemotePeers: (this: void, next: RemoteSelectionMap) => void;
 };
 
 export type SelectionActions = {
@@ -299,12 +300,9 @@ export function SelectionProvider({
   stateRef.current = state;
 
   const [remotePeers, setRemotePeers] = React.useState<RemoteSelectionMap>({});
-  const setRemotePeersStable = React.useCallback(
-    (next: RemoteSelectionMap) => {
-      setRemotePeers(next);
-    },
-    [],
-  );
+  const setRemotePeersStable = React.useCallback((next: RemoteSelectionMap) => {
+    setRemotePeers(next);
+  }, []);
   const remotePeerColorsValue = remotePeerColors ?? EMPTY_REMOTE_COLORS;
 
   const itemOrderRef = React.useRef<readonly string[]>(itemOrder);
@@ -411,13 +409,7 @@ export function SelectionProvider({
       remotePeerColors: remotePeerColorsValue,
       setRemotePeers: setRemotePeersStable,
     }),
-    [
-      state,
-      actions,
-      remotePeers,
-      remotePeerColorsValue,
-      setRemotePeersStable,
-    ],
+    [state, actions, remotePeers, remotePeerColorsValue, setRemotePeersStable],
   );
 
   return (

@@ -608,7 +608,7 @@ export function WorkspaceSession({
   function addTodo(text: string) {
     if (!text.trim()) return;
     void requestPersistentStorage();
-    void setState((draft) => {
+    setState((draft) => {
       draft.todos.splice(0, 0, { text, status: "todo" });
     });
     setNewText("");
@@ -616,7 +616,7 @@ export function WorkspaceSession({
 
   const handleTextChange = useCallback(
     (cid: string, value: string) => {
-      void setState((draft) => {
+      setState((draft) => {
         const index = draft.todos.findIndex((todo) => todo.$cid === cid);
         if (index !== -1) draft.todos[index].text = value;
       });
@@ -626,7 +626,7 @@ export function WorkspaceSession({
 
   const handleDoneChange = useCallback(
     (cid: string, done: boolean) => {
-      void setState((draft) => {
+      setState((draft) => {
         const from = draft.todos.findIndex((todo) => todo.$cid === cid);
         if (from === -1) return;
         draft.todos[from].status = done ? "done" : "todo";
@@ -677,7 +677,7 @@ export function WorkspaceSession({
   const moveTodoByOffset = useCallback(
     (cid: string, delta: -1 | 1) => {
       if (delta !== -1 && delta !== 1) return;
-      void setState((draft) => {
+      setState((draft) => {
         const fromIndex = draft.todos.findIndex((todo) => todo.$cid === cid);
         if (fromIndex === -1) return;
         const targetIndex = fromIndex + delta;
@@ -706,7 +706,7 @@ export function WorkspaceSession({
 
   const handleDelete = useCallback(
     (cid: string) => {
-      void setState((draft) => {
+      setState((draft) => {
         const index = draft.todos.findIndex((todo) => todo.$cid === cid);
         if (index !== -1) draft.todos.splice(index, 1);
       });
@@ -715,7 +715,7 @@ export function WorkspaceSession({
   );
 
   const handleClearCompleted = useCallback(() => {
-    void setState((draft) => {
+    setState((draft) => {
       for (let i = draft.todos.length - 1; i >= 0; i--) {
         if (draft.todos[i].status === "done") {
           draft.todos.splice(i, 1);

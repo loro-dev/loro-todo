@@ -1,5 +1,5 @@
-import type { LoroDoc } from "loro-crdt";
-import { createLoroAdaptorFromDoc } from "loro-adaptors";
+import { LoroDoc } from "loro-crdt";
+import { LoroAdaptor } from "loro-adaptors/loro";
 import { createPeerLeaseManager } from "./peerLeaseManager";
 import { ClientStatus, LoroWebsocketClient } from "loro-websocket";
 import type { ClientStatusValue } from "loro-websocket";
@@ -89,7 +89,7 @@ export async function setupPublicSync(
   handlers: PublicSyncHandlers,
   options: PublicSyncOptions = {},
 ): Promise<PublicSyncSession> {
-  let adaptor: ReturnType<typeof createLoroAdaptorFromDoc> | null = null;
+  let adaptor: LoroAdaptor | null = null;
   let roomCleanup: (() => Promise<void> | void) | null = null;
   let offStatus: (() => void) | null = null;
   let offLatency: (() => void) | null = null;
@@ -232,7 +232,7 @@ export async function setupPublicSync(
       }
 
       await peerLease.acquire(currentPublicHex);
-      adaptor = createLoroAdaptorFromDoc(doc);
+      adaptor = new LoroAdaptor(doc);
       const activeAdaptor = adaptor;
       const token = await signSaltTokenHex(privateKey);
       const url = buildAuthUrl(SYNC_BASE, currentPublicHex, token);
