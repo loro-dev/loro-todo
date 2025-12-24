@@ -10,22 +10,22 @@ importers:
     dependencies:
       '@loro-dev/peer-lease':
         specifier: ^2.0.2
-        version: 2.0.2(loro-crdt@1.8.0)
+        version: 2.0.2(loro-crdt@1.10.3)
       loro-adaptors:
-        specifier: 0.1.0
-        version: 0.1.0(loro-crdt@1.8.0)
+        specifier: ^0.6.0
+        version: 0.6.0(loro-crdt@1.10.3)
       loro-crdt:
-        specifier: ^1.8.0
-        version: 1.8.0
+        specifier: ^1.10.3
+        version: 1.10.3
       loro-mirror:
-        specifier: 1.0.0
-        version: 1.0.0(loro-crdt@1.8.0)
+        specifier: ^1.2.1
+        version: 1.2.1(loro-crdt@1.10.3)
       loro-mirror-react:
-        specifier: 1.0.0
-        version: 1.0.0(loro-crdt@1.8.0)(loro-mirror@1.0.0(loro-crdt@1.8.0))(react@18.3.1)
+        specifier: ^1.2.1
+        version: 1.2.1(loro-crdt@1.10.3)(loro-mirror@1.2.1(loro-crdt@1.10.3))(react@18.3.1)
       loro-websocket:
-        specifier: 0.1.3
-        version: 0.1.3(loro-crdt@1.8.0)
+        specifier: ^0.6.0
+        version: 0.6.0(loro-crdt@1.10.3)
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -41,7 +41,7 @@ importers:
         version: 18.3.7(@types/react@18.3.24)
       '@vitejs/plugin-react':
         specifier: ^4.3.1
-        version: 4.7.0(vite@5.4.20(@types/node@24.5.1))
+        version: 4.7.0(vite@5.4.20(@types/node@25.0.3))
       oxlint:
         specifier: ^1.16.0
         version: 1.16.0(oxlint-tsgolint@0.2.0)
@@ -53,13 +53,13 @@ importers:
         version: 5.9.2
       vite:
         specifier: ^5.4.3
-        version: 5.4.20(@types/node@24.5.1)
+        version: 5.4.20(@types/node@25.0.3)
       vite-plugin-top-level-await:
         specifier: ^1.6.0
-        version: 1.6.0(rollup@4.50.2)(vite@5.4.20(@types/node@24.5.1))
+        version: 1.6.0(rollup@4.50.2)(vite@5.4.20(@types/node@25.0.3))
       vite-plugin-wasm:
         specifier: ^3.5.0
-        version: 3.5.0(vite@5.4.20(@types/node@24.5.1))
+        version: 3.5.0(vite@5.4.20(@types/node@25.0.3))
 
 packages:
 
@@ -586,8 +586,8 @@ packages:
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
-  '@types/node@24.5.1':
-    resolution: {integrity: sha512-/SQdmUP2xa+1rdx7VwB9yPq8PaKej8TD5cQ+XfKDPWWC+VDJU4rvVVagXqKUzhKjtFoNA8rXDJAkCxQPAe00+Q==}
+  '@types/node@25.0.3':
+    resolution: {integrity: sha512-W609buLVRVmeW693xKfzHeIV6nJGGz98uCPfeXI1ELMLXVeKYZ9m15fAMSaUPBHYLGFsVRcMmSCksQOrZV9BYA==}
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -657,8 +657,8 @@ packages:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
     engines: {node: '>=6.9.0'}
 
-  immer@10.1.3:
-    resolution: {integrity: sha512-tmjF/k8QDKydUlm3mZU+tjM6zeq9/fFpPqH9SzWmBnVVKsPBg/V66qsMwb3/Bo90cgUN+ghdVBess+hPsxUyRw==}
+  immer@10.2.0:
+    resolution: {integrity: sha512-d/+XTN3zfODyjr89gM3mPq1WNX2B8pYsu7eORitdwyA2sBubnTl3laYlBk4sXY5FUa5qTZGBDPJICVbvqzjlbw==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -677,36 +677,45 @@ packages:
     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
     hasBin: true
 
-  loro-adaptors@0.1.0:
-    resolution: {integrity: sha512-txtN0gS6kZcdmlxdeXAv20Ag53HcJ3nJgjyI/w1a0/BoXMOQ66RrhC8+TFpFIOshPamd4Ms0i3QLu9kLsCBDZw==}
+  loro-adaptors@0.6.0:
+    resolution: {integrity: sha512-HepuEGV7T1HGUbjkcZSEEA2Z3dy5LmryUa3VUFnhTpUk+VzVUdvWYrvN4SlzeMS/t6Jg+qhCKNWX2OEfvzW5mQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      loro-crdt: ^1.7.1
+      '@loro-dev/flock': ^4.0.0
+      loro-crdt: ^1.9.0
+      yjs: '*'
+    peerDependenciesMeta:
+      '@loro-dev/flock':
+        optional: true
+      loro-crdt:
+        optional: true
+      yjs:
+        optional: true
 
-  loro-crdt@1.8.0:
-    resolution: {integrity: sha512-MzluzAzmxgBXBnlkZLmlC3gpMECTNy2I6nq+MusnVjUFwxXvq4LUtEOnj5+bVE6wFqSLzqaxjBvlOvfApW2Jmg==}
+  loro-crdt@1.10.3:
+    resolution: {integrity: sha512-vzWkVw7mWrKTilPjrgAhhzjAyOn3/DaUPJxdK9lunpEI1Y+uQMDBt/pEtRiovKFtGXo4tUVfULnFc7H/ufGwkQ==}
 
-  loro-mirror-react@1.0.0:
-    resolution: {integrity: sha512-GjA2P9i6Vd3tgnAk9LyCdmsHgybMi0/AKLc8q4oCYNssz2O6Jf8zY4th6N3vl+NQgHxZ9eJC08DeilNORE9gcw==}
+  loro-mirror-react@1.2.1:
+    resolution: {integrity: sha512-ysFnKRFpU5/QYMuYa3BXBR0o/oKTsu+0wOXbL13ljmMO9WyzMYnXcR45kloXQoT1KcJfejeu1YlDcYZ0rIlKDg==}
     peerDependencies:
       loro-crdt: ^1.8.0
-      loro-mirror: 1.0.0
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0
+      loro-mirror: 1.2.1
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  loro-mirror@1.0.0:
-    resolution: {integrity: sha512-77PyZxkA/xyq8igmVO2bH6U3EkrKICz7Gnhu2fQ/L5UO61JC+zisUwy/8Hy26DXrVE07jih0WbwVZ7sMJLRcbg==}
+  loro-mirror@1.2.1:
+    resolution: {integrity: sha512-ySBIn3DA+ZdpI2w+pHR/zQ4bd7XghOFY6rb7IAGmLjRbMxEbdwvUi0MtBn9xQ5c7QIcHBCa2Ryzz5yqTo7VODg==}
     peerDependencies:
       loro-crdt: ^1.8.0
 
-  loro-protocol@0.1.0:
-    resolution: {integrity: sha512-cImsQOwKn4ax0ptsmnUfPKyct7AzOhB/NnXNu911fSLIm4n9T0a2pCf6AzriyxZwGqMx/uIZlYq5QNUKRKZaXw==}
+  loro-protocol@0.3.0:
+    resolution: {integrity: sha512-j28FzDwOVHk95asjQEk8yse7hfYHnStdusYcQBphWRwzA8wzE5iMHQpnDyog1O6kmJQ6W/iC8yDisHpxH0wUAg==}
     engines: {node: '>=18.0.0'}
 
-  loro-websocket@0.1.3:
-    resolution: {integrity: sha512-1l14d9coNfW8geFSHXuUebAGYp+3qxAyUfzmhAqtFqZCTpETTauRmD9C5OPHO5zG/FWfBAEngIsulORGeMKnWQ==}
+  loro-websocket@0.6.0:
+    resolution: {integrity: sha512-sdyVrOb6QjoFYBmOBjyyFPkBkAPu9QSd9AJdJu8NLsGcL5lCzSum8/tB0Wz9zjNJlkPJRzgI7yZPFetm7qhWcA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      loro-crdt: ^1.7.1
+      loro-crdt: ^1.9.0
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
@@ -777,8 +786,8 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
-  undici-types@7.12.0:
-    resolution: {integrity: sha512-goOacqME2GYyOZZfb5Lgtu+1IDmAlAEu5xnD3+xTzS10hT0vzpf0SPjkXwAw9Jm+4n/mQGDP3LO8CPbYROeBfQ==}
+  undici-types@7.16.0:
+    resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
   update-browserslist-db@1.1.3:
     resolution: {integrity: sha512-UxhIZQ+QInVdunkDAaiazvvT/+fXL5Osr0JZlJulepYu6Jd7qJtDZjlur0emRlT71EN3ScPoE7gvsuIKKNavKw==}
@@ -1048,9 +1057,9 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@loro-dev/peer-lease@2.0.2(loro-crdt@1.8.0)':
+  '@loro-dev/peer-lease@2.0.2(loro-crdt@1.10.3)':
     dependencies:
-      loro-crdt: 1.8.0
+      loro-crdt: 1.10.3
 
   '@oxlint-tsgolint/darwin-arm64@0.2.0':
     optional: true
@@ -1240,9 +1249,9 @@ snapshots:
 
   '@types/estree@1.0.8': {}
 
-  '@types/node@24.5.1':
+  '@types/node@25.0.3':
     dependencies:
-      undici-types: 7.12.0
+      undici-types: 7.16.0
 
   '@types/prop-types@15.7.15': {}
 
@@ -1257,9 +1266,9 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 24.5.1
+      '@types/node': 25.0.3
 
-  '@vitejs/plugin-react@4.7.0(vite@5.4.20(@types/node@24.5.1))':
+  '@vitejs/plugin-react@4.7.0(vite@5.4.20(@types/node@25.0.3))':
     dependencies:
       '@babel/core': 7.28.4
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.28.4)
@@ -1267,7 +1276,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 5.4.20(@types/node@24.5.1)
+      vite: 5.4.20(@types/node@25.0.3)
     transitivePeerDependencies:
       - supports-color
 
@@ -1326,7 +1335,7 @@ snapshots:
 
   gensync@1.0.0-beta.2: {}
 
-  immer@10.1.3: {}
+  immer@10.2.0: {}
 
   js-tokens@4.0.0: {}
 
@@ -1338,36 +1347,39 @@ snapshots:
     dependencies:
       js-tokens: 4.0.0
 
-  loro-adaptors@0.1.0(loro-crdt@1.8.0):
+  loro-adaptors@0.6.0(loro-crdt@1.10.3):
     dependencies:
-      loro-crdt: 1.8.0
-      loro-protocol: 0.1.0
+      loro-protocol: 0.3.0
+    optionalDependencies:
+      loro-crdt: 1.10.3
 
-  loro-crdt@1.8.0: {}
+  loro-crdt@1.10.3: {}
 
-  loro-mirror-react@1.0.0(loro-crdt@1.8.0)(loro-mirror@1.0.0(loro-crdt@1.8.0))(react@18.3.1):
+  loro-mirror-react@1.2.1(loro-crdt@1.10.3)(loro-mirror@1.2.1(loro-crdt@1.10.3))(react@18.3.1):
     dependencies:
-      loro-crdt: 1.8.0
-      loro-mirror: 1.0.0(loro-crdt@1.8.0)
+      loro-crdt: 1.10.3
+      loro-mirror: 1.2.1(loro-crdt@1.10.3)
       react: 18.3.1
 
-  loro-mirror@1.0.0(loro-crdt@1.8.0):
+  loro-mirror@1.2.1(loro-crdt@1.10.3):
     dependencies:
-      immer: 10.1.3
-      loro-crdt: 1.8.0
+      immer: 10.2.0
+      loro-crdt: 1.10.3
 
-  loro-protocol@0.1.0: {}
+  loro-protocol@0.3.0: {}
 
-  loro-websocket@0.1.3(loro-crdt@1.8.0):
+  loro-websocket@0.6.0(loro-crdt@1.10.3):
     dependencies:
       '@types/ws': 8.18.1
-      loro-adaptors: 0.1.0(loro-crdt@1.8.0)
-      loro-crdt: 1.8.0
-      loro-protocol: 0.1.0
+      loro-adaptors: 0.6.0(loro-crdt@1.10.3)
+      loro-crdt: 1.10.3
+      loro-protocol: 0.3.0
       ws: 8.18.3
     transitivePeerDependencies:
+      - '@loro-dev/flock'
       - bufferutil
       - utf-8-validate
+      - yjs
 
   lru-cache@5.1.1:
     dependencies:
@@ -1457,7 +1469,7 @@ snapshots:
 
   typescript@5.9.2: {}
 
-  undici-types@7.12.0: {}
+  undici-types@7.16.0: {}
 
   update-browserslist-db@1.1.3(browserslist@4.26.2):
     dependencies:
@@ -1467,28 +1479,28 @@ snapshots:
 
   uuid@10.0.0: {}
 
-  vite-plugin-top-level-await@1.6.0(rollup@4.50.2)(vite@5.4.20(@types/node@24.5.1)):
+  vite-plugin-top-level-await@1.6.0(rollup@4.50.2)(vite@5.4.20(@types/node@25.0.3)):
     dependencies:
       '@rollup/plugin-virtual': 3.0.2(rollup@4.50.2)
       '@swc/core': 1.13.5
       '@swc/wasm': 1.13.5
       uuid: 10.0.0
-      vite: 5.4.20(@types/node@24.5.1)
+      vite: 5.4.20(@types/node@25.0.3)
     transitivePeerDependencies:
       - '@swc/helpers'
       - rollup
 
-  vite-plugin-wasm@3.5.0(vite@5.4.20(@types/node@24.5.1)):
+  vite-plugin-wasm@3.5.0(vite@5.4.20(@types/node@25.0.3)):
     dependencies:
-      vite: 5.4.20(@types/node@24.5.1)
+      vite: 5.4.20(@types/node@25.0.3)
 
-  vite@5.4.20(@types/node@24.5.1):
+  vite@5.4.20(@types/node@25.0.3):
     dependencies:
       esbuild: 0.21.5
       postcss: 8.5.6
       rollup: 4.50.2
     optionalDependencies:
-      '@types/node': 24.5.1
+      '@types/node': 25.0.3
       fsevents: 2.3.3
 
   ws@8.18.3: {}

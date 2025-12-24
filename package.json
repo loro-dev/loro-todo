@@ -15,11 +15,11 @@
   },
   "dependencies": {
     "@loro-dev/peer-lease": "^2.0.2",
-    "loro-adaptors": "0.1.0",
-    "loro-crdt": "^1.8.0",
-    "loro-mirror": "1.0.0",
-    "loro-mirror-react": "1.0.0",
-    "loro-websocket": "0.1.3",
+    "loro-adaptors": "^0.6.0",
+    "loro-crdt": "^1.10.3",
+    "loro-mirror": "^1.2.1",
+    "loro-mirror-react": "^1.2.1",
+    "loro-websocket": "^0.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
